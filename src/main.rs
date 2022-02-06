@@ -19,7 +19,7 @@ pub fn catcher_speed(dashing: bool, hyper_multiplier: f32) -> f32 {
     mov_speed
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 struct Fruit {
     position: f32,
     time: f32,
@@ -36,36 +36,15 @@ impl Fruit {
     }
 }
 
-struct Game {
-    #[allow(dead_code)]
-    audio: AudioManager,
-    catcher: Texture2D,
-    fruit: Texture2D,
-
-    handle: InstanceHandle,
-
-    time: f32,
-    prev_time: f32,
-    position: f32,
-    hyper_multiplier: f32,
-
-    combo: u32,
-
+struct Chart {
     fruits: Vec<Fruit>,
-    deref_delete: Vec<usize>,
+    fall_time: f32,
+    fruit_radius: f32,
+    catcher_width: f32,
 }
 
-//const FIXED_DELTA: f32 = 1. / 60.;
-
-impl Game {
-    pub async fn new() -> Self {
-        let beatmap_data = load_file("resources/aru - Kizuato (Benny-) [Platter].osu")
-            .await
-            .unwrap();
-        let beatmap_content = std::str::from_utf8(&beatmap_data).unwrap();
-        let beatmap =
-            osu_parser::load_content(beatmap_content, osu_parser::BeatmapParseOptions::default())
-                .unwrap();
+impl Chart {
+    pub fn from_beatmap(beatmap: &osu_parser::Beatmap) -> Self {
         let mut fruits = Vec::with_capacity(beatmap.hit_objects.len());
         for (idx, hitobject) in beatmap.hit_objects.iter().enumerate() {
             let mut fruit = Fruit::from_hitobject(hitobject);
@@ -85,6 +64,51 @@ impl Game {
             fruits.push(fruit);
         }
 
+        Chart {
+            fruits,
+            fall_time: osu_utils::ar_to_ms(beatmap.info.difficulty.ar) / 1000.,
+            fruit_radius: osu_utils::cs_to_px(beatmap.info.difficulty.cs),
+            catcher_width: {
+                let scale = 1. - 0.7 * (beatmap.info.difficulty.cs - 5.) / 5.;
+                106.75 * scale * 0.8
+            },
+        }
+    }
+}
+
+struct Game {
+    #[allow(dead_code)]
+    audio: AudioManager,
+    catcher: Texture2D,
+    fruit: Texture2D,
+
+    handle: InstanceHandle,
+
+    time: f32,
+    prev_time: f32,
+    position: f32,
+    hyper_multiplier: f32,
+
+    combo: u32,
+
+    chart: Chart,
+    queued_fruits: Vec<usize>,
+    deref_delete: Vec<usize>,
+}
+
+//const FIXED_DELTA: f32 = 1. / 60.;
+
+impl Game {
+    pub async fn new() -> Self {
+        let beatmap_data = load_file("resources/aru - Kizuato (Benny-) [Platter].osu")
+            .await
+            .unwrap();
+        let beatmap_content = std::str::from_utf8(&beatmap_data).unwrap();
+        let beatmap =
+            osu_parser::load_content(beatmap_content, osu_parser::BeatmapParseOptions::default())
+                .unwrap();
+        let chart = Chart::from_beatmap(&beatmap);
+
         let mut audio = AudioManager::new(AudioManagerSettings::default()).unwrap();
 
         let song = load_file("resources/audio.wav").await.unwrap();
@@ -103,18 +127,20 @@ impl Game {
             position: 256.,
             hyper_multiplier: 1.,
             combo: 0,
-            deref_delete: Vec::with_capacity(fruits.len()),
-            fruits,
+            deref_delete: Vec::with_capacity(chart.fruits.len()),
+            queued_fruits: (0..chart.fruits.len()).collect(),
+            chart,
         }
     }
 
     pub fn catcher_y(&self) -> f32 {
-        screen_height() - 102.
+        screen_height() - 148.
     }
 
     pub fn fruit_y(&self, time: f32, target: f32) -> f32 {
         let time_left = target - time;
-        self.catcher_y() - time_left * 600.
+        let progress = 1. - (time_left / self.chart.fall_time);
+        self.catcher_y() * progress
     }
 
     pub fn catcher_speed(&self) -> f32 {
@@ -122,11 +148,14 @@ impl Game {
     }
 
     pub fn playfield_to_screen_x(&self, x: f32) -> f32 {
-        self.playfield_x() + x
+        let visual_width = self.playfield_width() * self.scale();
+        let playfield_x = screen_width() / 2. - visual_width / 2.;
+        playfield_x + x * self.scale()
     }
 
-    pub fn playfield_x(&self) -> f32 {
-        screen_width() / 2. - self.playfield_width() / 2.
+    pub fn scale(&self) -> f32 {
+        let scale = screen_width() / 512.;
+        scale * 2. / 3.
     }
 
     pub fn playfield_width(&self) -> f32 {
@@ -143,24 +172,6 @@ impl Game {
         self.prev_time = self.time;
         self.time = self.handle.position() as f32;
 
-        draw_line(
-            self.playfield_to_screen_x(0.) + 2. / 2.,
-            0.,
-            self.playfield_to_screen_x(0.) + 2. / 2.,
-            screen_height(),
-            2.,
-            RED,
-        );
-
-        draw_line(
-            self.playfield_to_screen_x(self.playfield_width()) + 2. / 2.,
-            0.,
-            self.playfield_to_screen_x(self.playfield_width()) + 2. / 2.,
-            screen_height(),
-            2.,
-            RED,
-        );
-
         self.position = self
             .position
             .add(self.movement_direction() as f32 * self.catcher_speed() * get_frame_time() /*FIXED_DELTA*/)
@@ -169,18 +180,19 @@ impl Game {
         let fruit_travel_distance = self.fruit_y(self.time, 0.) - self.fruit_y(self.prev_time, 0.);
 
         let catcher_hitbox = Rect::new(
-            self.position - 128. / 2.,
+            self.position - self.chart.catcher_width / 2.,
             catcher_y - fruit_travel_distance / 2.,
-            128.,
+            self.chart.catcher_width,
             fruit_travel_distance,
         );
 
-        for (idx, fruit) in self.fruits.iter().enumerate() {
+        for (idx, fruit) in self.queued_fruits.iter().enumerate() {
+            let fruit = self.chart.fruits[*fruit];
             // Last frame hitbox.
             let fruit_hitbox = Rect::new(
-                fruit.position - 64. / 2.,
-                self.fruit_y(self.prev_time, fruit.time) + 64. / 2. - fruit_travel_distance / 2.,
-                64.,
+                fruit.position - self.chart.fruit_radius,
+                self.fruit_y(self.prev_time, fruit.time) - fruit_travel_distance / 2.,
+                self.chart.fruit_radius * 2.,
                 fruit_travel_distance,
             );
             let hit = can_catch_fruit(catcher_hitbox, fruit_hitbox);
@@ -201,58 +213,97 @@ impl Game {
         }
 
         for idx in self.deref_delete.drain(..).rev() {
-            self.fruits.remove(idx);
+            self.queued_fruits.remove(idx);
         }
     }
 
     pub fn draw(&self) {
+        draw_line(
+            self.playfield_to_screen_x(0.) + 2. / 2.,
+            0.,
+            self.playfield_to_screen_x(0.) + 2. / 2.,
+            screen_height(),
+            2.,
+            RED,
+        );
+
+        draw_line(
+            self.playfield_to_screen_x(self.playfield_width()) + 2. / 2.,
+            0.,
+            self.playfield_to_screen_x(self.playfield_width()) + 2. / 2.,
+            screen_height(),
+            2.,
+            RED,
+        );
+
         let fruit_travel_distance = self.fruit_y(self.time, 0.) - self.fruit_y(self.prev_time, 0.);
         let catcher_hitbox = Rect::new(
-            self.position - 128. / 2.,
+            self.position - self.chart.catcher_width / 2.,
             self.catcher_y() - fruit_travel_distance / 2.,
-            128.,
+            self.chart.catcher_width,
             fruit_travel_distance,
         );
 
-        for fruit in &self.fruits {
+        for fruit in &self.queued_fruits {
+            let fruit = self.chart.fruits[*fruit];
             draw_texture_ex(
                 self.fruit,
-                self.playfield_to_screen_x(fruit.position) - 64. / 2.,
-                self.fruit_y(self.time, fruit.time),
+                self.playfield_to_screen_x(fruit.position) - self.chart.fruit_radius * self.scale(),
+                self.fruit_y(self.time, fruit.time) - self.chart.fruit_radius * self.scale(),
                 if fruit.hyper.is_some() { RED } else { WHITE },
                 DrawTextureParams {
-                    dest_size: Some(vec2(64., 64.)),
+                    dest_size: Some(vec2(
+                        self.chart.fruit_radius * 2. * self.scale(),
+                        self.chart.fruit_radius * 2. * self.scale(),
+                    )),
                     ..Default::default()
                 },
             );
             let fruit_hitbox = Rect::new(
-                self.playfield_to_screen_x(fruit.position) - 64. / 2.,
-                self.fruit_y(self.time, fruit.time) + 64. / 2.,
-                64.,
-                fruit_travel_distance / 2.,
+                fruit.position - self.chart.fruit_radius,
+                self.fruit_y(self.time, fruit.time) - fruit_travel_distance / 2.,
+                self.chart.fruit_radius * 2.,
+                fruit_travel_distance,
+            );
+            let prev_fruit_hitbox = Rect::new(
+                fruit.position - self.chart.fruit_radius,
+                self.fruit_y(self.prev_time, fruit.time) - fruit_travel_distance / 2.,
+                self.chart.fruit_radius * 2.,
+                fruit_travel_distance,
             );
             draw_rectangle(
-                fruit_hitbox.x,
+                self.playfield_to_screen_x(fruit_hitbox.x),
                 fruit_hitbox.y,
-                fruit_hitbox.w,
+                fruit_hitbox.w * self.scale(),
                 fruit_hitbox.h,
                 BLUE,
+            );
+            draw_rectangle(
+                self.playfield_to_screen_x(prev_fruit_hitbox.x),
+                prev_fruit_hitbox.y,
+                prev_fruit_hitbox.w * self.scale(),
+                prev_fruit_hitbox.h,
+                GREEN,
             );
         }
         draw_rectangle(
             self.playfield_to_screen_x(catcher_hitbox.x),
             catcher_hitbox.y,
-            catcher_hitbox.w,
+            catcher_hitbox.w * self.scale(),
             catcher_hitbox.h,
             RED,
         );
         draw_texture_ex(
             self.catcher,
-            self.playfield_to_screen_x(self.position) - 128. / 2.,
+            self.playfield_to_screen_x(self.position)
+                - self.chart.catcher_width * self.scale() / 2.,
             self.catcher_y(),
             WHITE,
             DrawTextureParams {
-                dest_size: Some(vec2(128., 128.)),
+                dest_size: Some(vec2(
+                    self.chart.catcher_width * self.scale(),
+                    self.chart.catcher_width * self.scale(),
+                )),
                 ..Default::default()
             },
         );

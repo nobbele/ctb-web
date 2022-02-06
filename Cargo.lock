@@ -237,6 +237,7 @@ dependencies = [
  "macroquad",
  "osu-parser",
  "osu-types",
+ "osu-utils",
 ]
 
 [[package]]
@@ -745,6 +746,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ordered-float"
+version = "2.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7940cf2ca942593318d07fcf2596cdca60a85c9e7fab408a5e21a4f9dcd40d87"
+dependencies = [
+ "num-traits",
+]
+
+[[package]]
 name = "osu-parser"
 version = "0.1.0"
 dependencies = [
@@ -759,6 +769,15 @@ dependencies = [
  "mint",
  "num_enum",
  "serde",
+]
+
+[[package]]
+name = "osu-utils"
+version = "0.1.0"
+dependencies = [
+ "mint",
+ "ordered-float",
+ "osu-types",
 ]
 
 [[package]]
