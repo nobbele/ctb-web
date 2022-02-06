@@ -6,6 +6,7 @@ use kira::{
     sound::{Sound, SoundSettings},
 };
 use macroquad::prelude::*;
+use num_format::{Locale, ToFormattedString};
 
 pub fn can_catch_fruit(catcher_hitbox: Rect, fruit_hitbox: Rect) -> bool {
     catcher_hitbox.intersect(fruit_hitbox).is_some()
@@ -76,6 +77,54 @@ impl Chart {
     }
 }
 
+struct ScoreRecorder {
+    combo: u32,
+    top_combo: u32,
+    max_combo: u32,
+
+    internal_score: f32,
+    // Max = 1,000,000
+    score: u32,
+}
+
+impl ScoreRecorder {
+    pub fn new(max_combo: u32) -> Self {
+        ScoreRecorder {
+            combo: 0,
+            top_combo: 0,
+            max_combo,
+            internal_score: 0.,
+            score: 0,
+        }
+    }
+
+    pub fn register_judgement(&mut self, hit: bool) {
+        if hit {
+            self.combo += 1;
+            self.top_combo = self.top_combo.max(self.combo);
+
+            let combo_multiplier = self.combo as f32 / self.max_combo as f32;
+            self.internal_score += combo_multiplier;
+            self.score = (self.internal_score * 1_000_000. * 2. / (self.max_combo as f32 + 1.))
+                .round() as u32;
+        } else {
+            self.combo = 0;
+        }
+    }
+}
+
+#[test]
+fn test_score_recorder_limits() {
+    for max_combo in (1..256).step_by(13) {
+        dbg!(max_combo);
+        let mut recorder = ScoreRecorder::new(max_combo);
+        for _ in 0..max_combo {
+            recorder.register_judgement(true);
+        }
+        assert_eq!(recorder.score, 1_000_000);
+    }
+}
+
 struct Game {
     #[allow(dead_code)]
     audio: AudioManager,
@@ -83,13 +132,12 @@ struct Game {
     fruit: Texture2D,
 
     handle: InstanceHandle,
+    recorder: ScoreRecorder,
 
     time: f32,
     prev_time: f32,
     position: f32,
     hyper_multiplier: f32,
-
-    combo: u32,
 
     chart: Chart,
     queued_fruits: Vec<usize>,
@@ -124,9 +172,9 @@ impl Game {
             time: instance.position() as f32,
             prev_time: instance.position() as f32,
             handle: instance,
+            recorder: ScoreRecorder::new(chart.fruits.len() as u32),
             position: 256.,
             hyper_multiplier: 1.,
-            combo: 0,
             deref_delete: Vec::with_capacity(chart.fruits.len()),
             queued_fruits: (0..chart.fruits.len()).collect(),
             chart,
@@ -199,11 +247,11 @@ impl Game {
             let miss = fruit_hitbox.y >= screen_height();
             assert!(!(hit && miss), "Can't hit and miss at the same time!");
             if hit {
-                self.combo += 1;
+                self.recorder.register_judgement(true);
                 self.deref_delete.push(idx);
             }
             if miss {
-                self.combo = 0;
+                self.recorder.register_judgement(false);
                 self.deref_delete.push(idx);
                 println!("Miss!");
             }
@@ -309,9 +357,17 @@ impl Game {
         );
 
         draw_text(
-            &format!("{}x", self.combo),
+            &format!("{}x", self.recorder.combo),
             5.,
             screen_height() - 5.,
+            36.,
+            WHITE,
+        );
+
+        draw_text(
+            &format!("{}", self.recorder.score.to_formatted_string(&Locale::en)),
+            5.,
+            23.,
             36.,
             WHITE,
         );

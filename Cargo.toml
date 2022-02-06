@@ -11,6 +11,7 @@ osu-types = { path = "../osu-rs/osu-types" }
 osu-parser = { path = "../osu-rs/osu-parser" }
 osu-utils = { path = "../osu-rs/osu-utils" }
 kira = { version = "0.5.3", default-features = false, features = ['wav'] }
+num-format = "0.4.0"
 #kira = { git = "https://github.com/tesselode/kira", rev = "842a08f" }
 #kira-cpal = { git = "https://github.com/tesselode/kira", rev = "842a08f" }
 #kira-loaders = { git = "https://github.com/tesselode/kira", rev = "842a08f" }
