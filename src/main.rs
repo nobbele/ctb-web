@@ -82,9 +82,14 @@ struct ScoreRecorder {
     top_combo: u32,
     max_combo: u32,
 
+    hit_count: u32,
+    miss_count: u32,
+
+    // This needs to be tracked separately cause of floating point imprecision.
     internal_score: f32,
     // Max = 1,000,000
     score: u32,
+    accuracy: f32,
 }
 
 impl ScoreRecorder {
@@ -93,8 +98,11 @@ impl ScoreRecorder {
             combo: 0,
             top_combo: 0,
             max_combo,
+            hit_count: 0,
+            miss_count: 0,
             internal_score: 0.,
             score: 0,
+            accuracy: 1.0,
         }
     }
 
@@ -103,13 +111,16 @@ impl ScoreRecorder {
             self.combo += 1;
             self.top_combo = self.top_combo.max(self.combo);
 
-            let combo_multiplier = self.combo as f32 / self.max_combo as f32;
-            self.internal_score += combo_multiplier;
+            self.internal_score += self.combo as f32 / self.max_combo as f32;
             self.score = (self.internal_score * 1_000_000. * 2. / (self.max_combo as f32 + 1.))
                 .round() as u32;
+            self.hit_count += 1;
         } else {
             self.combo = 0;
+            self.miss_count += 1;
         }
+
+        self.accuracy = self.hit_count as f32 / (self.hit_count + self.miss_count) as f32;
     }
 }
 
@@ -130,6 +141,7 @@ struct Game {
     audio: AudioManager,
     catcher: Texture2D,
     fruit: Texture2D,
+    background: Texture2D,
 
     handle: InstanceHandle,
     recorder: ScoreRecorder,
@@ -138,6 +150,8 @@ struct Game {
     prev_time: f32,
     position: f32,
     hyper_multiplier: f32,
+
+    show_debug_hitbox: bool,
 
     chart: Chart,
     queued_fruits: Vec<usize>,
@@ -159,6 +173,10 @@ impl Game {
 
         let mut audio = AudioManager::new(AudioManagerSettings::default()).unwrap();
 
+        let catcher = load_texture("resources/catcher.png").await.unwrap();
+        let fruit = load_texture("resources/fruit.png").await.unwrap();
+        let background = load_texture("resources/ALICE.png").await.unwrap();
+
         let song = load_file("resources/audio.wav").await.unwrap();
         let sound_data =
             Sound::from_wav_reader(Cursor::new(song), SoundSettings::default()).unwrap();
@@ -167,8 +185,9 @@ impl Game {
 
         Game {
             audio,
-            catcher: load_texture("resources/catcher.png").await.unwrap(),
-            fruit: load_texture("resources/fruit.png").await.unwrap(),
+            catcher,
+            fruit,
+            background,
             time: instance.position() as f32,
             prev_time: instance.position() as f32,
             handle: instance,
@@ -178,6 +197,7 @@ impl Game {
             deref_delete: Vec::with_capacity(chart.fruits.len()),
             queued_fruits: (0..chart.fruits.len()).collect(),
             chart,
+            show_debug_hitbox: cfg!(debug_assertions),
         }
     }
 
@@ -263,9 +283,23 @@ impl Game {
         for idx in self.deref_delete.drain(..).rev() {
             self.queued_fruits.remove(idx);
         }
+
+        if is_key_pressed(KeyCode::O) {
+            self.show_debug_hitbox = !self.show_debug_hitbox;
+        }
     }
 
     pub fn draw(&self) {
+        draw_texture_ex(
+            self.background,
+            0.,
+            0.,
+            Color::new(1., 1., 1., 0.2),
+            DrawTextureParams {
+                dest_size: Some(vec2(screen_width(), screen_height())),
+                ..Default::default()
+            },
+        );
         draw_line(
             self.playfield_to_screen_x(0.) + 2. / 2.,
             0.,
@@ -307,40 +341,45 @@ impl Game {
                     ..Default::default()
                 },
             );
-            let fruit_hitbox = Rect::new(
-                fruit.position - self.chart.fruit_radius,
-                self.fruit_y(self.time, fruit.time) - fruit_travel_distance / 2.,
-                self.chart.fruit_radius * 2.,
-                fruit_travel_distance,
-            );
-            let prev_fruit_hitbox = Rect::new(
-                fruit.position - self.chart.fruit_radius,
-                self.fruit_y(self.prev_time, fruit.time) - fruit_travel_distance / 2.,
-                self.chart.fruit_radius * 2.,
-                fruit_travel_distance,
-            );
+            if self.show_debug_hitbox {
+                let fruit_hitbox = Rect::new(
+                    fruit.position - self.chart.fruit_radius,
+                    self.fruit_y(self.time, fruit.time) - fruit_travel_distance / 2.,
+                    self.chart.fruit_radius * 2.,
+                    fruit_travel_distance,
+                );
+                let prev_fruit_hitbox = Rect::new(
+                    fruit.position - self.chart.fruit_radius,
+                    self.fruit_y(self.prev_time, fruit.time) - fruit_travel_distance / 2.,
+                    self.chart.fruit_radius * 2.,
+                    fruit_travel_distance,
+                );
+
+                draw_rectangle(
+                    self.playfield_to_screen_x(fruit_hitbox.x),
+                    fruit_hitbox.y,
+                    fruit_hitbox.w * self.scale(),
+                    fruit_hitbox.h,
+                    BLUE,
+                );
+                draw_rectangle(
+                    self.playfield_to_screen_x(prev_fruit_hitbox.x),
+                    prev_fruit_hitbox.y,
+                    prev_fruit_hitbox.w * self.scale(),
+                    prev_fruit_hitbox.h,
+                    GREEN,
+                );
+            }
+        }
+        if self.show_debug_hitbox {
             draw_rectangle(
-                self.playfield_to_screen_x(fruit_hitbox.x),
-                fruit_hitbox.y,
-                fruit_hitbox.w * self.scale(),
-                fruit_hitbox.h,
-                BLUE,
-            );
-            draw_rectangle(
-                self.playfield_to_screen_x(prev_fruit_hitbox.x),
-                prev_fruit_hitbox.y,
-                prev_fruit_hitbox.w * self.scale(),
-                prev_fruit_hitbox.h,
-                GREEN,
+                self.playfield_to_screen_x(catcher_hitbox.x),
+                catcher_hitbox.y,
+                catcher_hitbox.w * self.scale(),
+                catcher_hitbox.h,
+                RED,
             );
         }
-        draw_rectangle(
-            self.playfield_to_screen_x(catcher_hitbox.x),
-            catcher_hitbox.y,
-            catcher_hitbox.w * self.scale(),
-            catcher_hitbox.h,
-            RED,
-        );
         draw_texture_ex(
             self.catcher,
             self.playfield_to_screen_x(self.position)
@@ -354,6 +393,14 @@ impl Game {
                 )),
                 ..Default::default()
             },
+        );
+
+        draw_text(
+            &format!("{:.2}%", self.recorder.accuracy * 100.),
+            screen_width() - 116.,
+            23.,
+            36.,
+            WHITE,
         );
 
         draw_text(
@@ -386,7 +433,7 @@ async fn main() {
         //    counter -= FIXED_DELTA;
         //}
 
-        clear_background(LIGHTGRAY);
+        clear_background(BLACK);
         game.draw();
         next_frame().await
     }
