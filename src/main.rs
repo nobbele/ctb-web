@@ -1,11 +1,27 @@
-use std::{io::Cursor, ops::Add};
+#![feature(once_cell)]
+#![allow(clippy::eq_op)]
+use std::{
+    future::Future,
+    io::Cursor,
+    ops::Add,
+    pin::Pin,
+    sync::{
+        atomic::{AtomicBool, AtomicUsize, Ordering},
+        Arc, Mutex,
+    },
+};
 
+use async_trait::async_trait;
 use kira::{
-    instance::{handle::InstanceHandle, InstanceSettings},
+    instance::{handle::InstanceHandle, InstanceSettings, StopInstanceSettings},
     manager::{AudioManager, AudioManagerSettings},
     sound::{Sound, SoundSettings},
 };
-use macroquad::prelude::*;
+use macroquad::{
+    hash,
+    prelude::*,
+    ui::{root_ui, widgets},
+};
 use num_format::{Locale, ToFormattedString};
 
 pub fn can_catch_fruit(catcher_hitbox: Rect, fruit_hitbox: Rect) -> bool {
@@ -50,7 +66,7 @@ impl Chart {
         for (idx, hitobject) in beatmap.hit_objects.iter().enumerate() {
             let mut fruit = Fruit::from_hitobject(hitobject);
 
-            // If you can't get to the fruit center in time, we need to give the player some extra speed.
+            // If you can't get to the center of the next fruit in time, we need to give the player some extra speed.
             // TODO use same implementation as osu!catch.
             if let Some(next_hitobject) = beatmap.hit_objects.get(idx + 1) {
                 let next_fruit = Fruit::from_hitobject(next_hitobject);
@@ -136,14 +152,9 @@ fn test_score_recorder_limits() {
     }
 }
 
-struct Game {
-    #[allow(dead_code)]
-    audio: AudioManager,
-    catcher: Texture2D,
-    fruit: Texture2D,
+struct Gameplay {
     background: Texture2D,
 
-    handle: InstanceHandle,
     recorder: ScoreRecorder,
 
     time: f32,
@@ -158,11 +169,15 @@ struct Game {
     deref_delete: Vec<usize>,
 }
 
-//const FIXED_DELTA: f32 = 1. / 60.;
+#[async_trait]
+trait Screen {
+    async fn update(&mut self, data: Arc<GameData>);
+    fn draw(&self, data: Arc<GameData>);
+}
 
-impl Game {
-    pub async fn new() -> Self {
-        let beatmap_data = load_file("resources/aru - Kizuato (Benny-) [Platter].osu")
+impl Gameplay {
+    pub async fn new(data: Arc<GameData>, map: &str, diff: &str) -> Self {
+        let beatmap_data = load_file(&format!("resources/{}/{}.osu", map, diff))
             .await
             .unwrap();
         let beatmap_content = std::str::from_utf8(&beatmap_data).unwrap();
@@ -171,30 +186,31 @@ impl Game {
                 .unwrap();
         let chart = Chart::from_beatmap(&beatmap);
 
-        let mut audio = AudioManager::new(AudioManagerSettings::default()).unwrap();
+        let background = load_texture(&format!("resources/{}/bg.png", map))
+            .await
+            .unwrap();
 
-        let catcher = load_texture("resources/catcher.png").await.unwrap();
-        let fruit = load_texture("resources/fruit.png").await.unwrap();
-        let background = load_texture("resources/ALICE.png").await.unwrap();
-
-        let song = load_file("resources/audio.wav").await.unwrap();
+        let song = load_file(&format!("resources/{}/audio.wav", map))
+            .await
+            .unwrap();
         let sound_data =
             Sound::from_wav_reader(Cursor::new(song), SoundSettings::default()).unwrap();
-        let mut sound = audio.add_sound(sound_data).unwrap();
-        let instance = sound.play(InstanceSettings::default().volume(0.5)).unwrap();
+        let mut sound = data.audio.lock().unwrap().add_sound(sound_data).unwrap();
+        data.music
+            .lock()
+            .unwrap()
+            .stop(StopInstanceSettings::new())
+            .unwrap();
+        *data.music.lock().unwrap() = sound.play(InstanceSettings::default().volume(0.5)).unwrap();
 
-        Game {
-            audio,
-            catcher,
-            fruit,
+        Gameplay {
             background,
-            time: instance.position() as f32,
-            prev_time: instance.position() as f32,
-            handle: instance,
+            time: 0.,
+            prev_time: 0.,
             recorder: ScoreRecorder::new(chart.fruits.len() as u32),
             position: 256.,
             hyper_multiplier: 1.,
-            deref_delete: Vec::with_capacity(chart.fruits.len()),
+            deref_delete: Vec::new(),
             queued_fruits: (0..chart.fruits.len()).collect(),
             chart,
             show_debug_hitbox: cfg!(debug_assertions),
@@ -233,12 +249,15 @@ impl Game {
     pub fn movement_direction(&self) -> i32 {
         is_key_down(KeyCode::D) as i32 - is_key_down(KeyCode::A) as i32
     }
+}
 
-    pub fn update(&mut self) {
+#[async_trait]
+impl Screen for Gameplay {
+    async fn update(&mut self, data: Arc<GameData>) {
         let catcher_y = self.catcher_y();
 
         self.prev_time = self.time;
-        self.time = self.handle.position() as f32;
+        self.time = data.music.lock().unwrap().position() as f32;
 
         self.position = self
             .position
@@ -289,7 +308,7 @@ impl Game {
         }
     }
 
-    pub fn draw(&self) {
+    fn draw(&self, data: Arc<GameData>) {
         draw_texture_ex(
             self.background,
             0.,
@@ -329,7 +348,7 @@ impl Game {
         for fruit in &self.queued_fruits {
             let fruit = self.chart.fruits[*fruit];
             draw_texture_ex(
-                self.fruit,
+                data.fruit,
                 self.playfield_to_screen_x(fruit.position) - self.chart.fruit_radius * self.scale(),
                 self.fruit_y(self.time, fruit.time) - self.chart.fruit_radius * self.scale(),
                 if fruit.hyper.is_some() { RED } else { WHITE },
@@ -381,7 +400,7 @@ impl Game {
             );
         }
         draw_texture_ex(
-            self.catcher,
+            data.catcher,
             self.playfield_to_screen_x(self.position)
                 - self.chart.catcher_width * self.scale() / 2.,
             self.catcher_y(),
@@ -412,12 +431,188 @@ impl Game {
         );
 
         draw_text(
-            &format!("{}", self.recorder.score.to_formatted_string(&Locale::en)),
+            &self.recorder.score.to_formatted_string(&Locale::en),
             5.,
             23.,
             36.,
             WHITE,
         );
+    }
+}
+
+struct MapListing {
+    name: String,
+    difficulties: Vec<String>,
+}
+
+struct MainMenu {
+    maps: Vec<MapListing>,
+    prev_selected_map: usize,
+    selected_map: AtomicUsize,
+    selected_difficulty: AtomicUsize,
+    loading: bool,
+    done: AtomicBool,
+}
+
+impl MainMenu {
+    pub async fn new(_data: Arc<GameData>) -> Self {
+        MainMenu {
+            maps: vec![
+                MapListing {
+                    name: "Kizuato".to_string(),
+                    difficulties: vec!["Platter".to_string(), "Ascendance's Rain".to_string()],
+                },
+                MapListing {
+                    name: "Padoru".to_string(),
+                    difficulties: vec!["Salad".to_string(), "Platter".to_string()],
+                },
+            ],
+            prev_selected_map: 0,
+            selected_map: AtomicUsize::new(0),
+            selected_difficulty: AtomicUsize::new(0),
+            loading: false,
+            done: AtomicBool::new(false),
+        }
+    }
+}
+
+#[async_trait]
+impl Screen for MainMenu {
+    async fn update(&mut self, data: Arc<GameData>) {
+        let selected_map = self.selected_map.load(Ordering::Relaxed);
+        if selected_map != self.prev_selected_map {
+            self.prev_selected_map = selected_map;
+            let song = load_file(&format!(
+                "resources/{}/audio.wav",
+                self.maps[selected_map].name
+            ))
+            .await
+            .unwrap();
+            let sound_data =
+                Sound::from_wav_reader(Cursor::new(song), SoundSettings::default()).unwrap();
+            let mut sound = data.audio.lock().unwrap().add_sound(sound_data).unwrap();
+            data.music
+                .lock()
+                .unwrap()
+                .stop(StopInstanceSettings::new())
+                .unwrap();
+            *data.music.lock().unwrap() =
+                sound.play(InstanceSettings::default().volume(0.5)).unwrap();
+        }
+        if self.done.load(Ordering::Relaxed) {
+            async fn fut(data: Arc<GameData>, map: String, diff: String) -> Box<dyn Screen> {
+                Box::new(Gameplay::new(data, &map, &diff).await)
+            }
+            let map = &self.maps[selected_map];
+            let fut = fut(
+                data.clone(),
+                map.name.clone(),
+                map.difficulties[self.selected_difficulty.load(Ordering::Relaxed)].clone(),
+            );
+            *data.queued_screen.lock().unwrap() = Some(Box::pin(fut));
+        }
+    }
+
+    fn draw(&self, _data: Arc<GameData>) {
+        if !self.loading {
+            widgets::Window::new(hash!("MapList"), vec2(0., 0.), vec2(260., 400.)).ui(
+                &mut root_ui(),
+                |ui| {
+                    let selected_map_idx = self.selected_map.load(Ordering::Relaxed);
+                    for (idx, map) in self.maps.iter().enumerate() {
+                        if ui.button(
+                            vec2(
+                                if idx == selected_map_idx { 20. } else { 0. },
+                                80.0 * idx as f32,
+                            ),
+                            map.name.as_str(),
+                        ) {
+                            self.selected_map.store(idx, Ordering::Relaxed);
+                        }
+                    }
+
+                    let map = &self.maps[self.selected_map.load(Ordering::Relaxed)];
+                    for (idx, difficulty) in map.difficulties.iter().enumerate() {
+                        if ui.button(
+                            vec2(56.0 * idx as f32, 80.0 * self.maps.len() as f32),
+                            difficulty.as_str(),
+                        ) {
+                            self.selected_difficulty.store(idx, Ordering::Relaxed);
+                        }
+                    }
+
+                    if ui.button(
+                        vec2(0.0, 80.0 * self.maps.len() as f32 + 26.),
+                        format!(
+                            "Start '{} [{}]'",
+                            map.name,
+                            map.difficulties[self.selected_difficulty.load(Ordering::Relaxed)]
+                        ),
+                    ) {
+                        self.done.store(true, Ordering::Relaxed);
+                    }
+                },
+            );
+        }
+    }
+}
+
+type ScreenQueueF = Pin<Box<dyn Future<Output = Box<dyn Screen>> + Send>>;
+
+struct GameData {
+    #[allow(dead_code)]
+    audio: Mutex<AudioManager>,
+    catcher: Texture2D,
+    fruit: Texture2D,
+
+    music: Mutex<InstanceHandle>,
+    queued_screen: Mutex<Option<ScreenQueueF>>,
+}
+
+struct Game {
+    data: Arc<GameData>,
+    screen: Box<dyn Screen>,
+}
+
+//const FIXED_DELTA: f32 = 1. / 60.;
+
+impl Game {
+    pub async fn new() -> Self {
+        let mut audio = AudioManager::new(AudioManagerSettings::default()).unwrap();
+
+        let catcher = load_texture("resources/catcher.png").await.unwrap();
+        let fruit = load_texture("resources/fruit.png").await.unwrap();
+
+        let song = load_file("resources/Kizuato/audio.wav").await.unwrap();
+        let sound_data =
+            Sound::from_wav_reader(Cursor::new(song), SoundSettings::default()).unwrap();
+        let mut sound = audio.add_sound(sound_data).unwrap();
+        let instance = sound.play(InstanceSettings::default().volume(0.5)).unwrap();
+
+        let data = Arc::new(GameData {
+            audio: Mutex::new(audio),
+            catcher,
+            fruit,
+            music: Mutex::new(instance),
+            queued_screen: Mutex::new(None),
+        });
+
+        Game {
+            //screen: Box::new(Gameplay::new(data.clone()).await),
+            screen: Box::new(MainMenu::new(data.clone()).await),
+            data,
+        }
+    }
+
+    pub async fn update(&mut self) {
+        self.screen.update(self.data.clone()).await;
+        if let Some(queued_screen) = self.data.queued_screen.lock().unwrap().take() {
+            self.screen = queued_screen.await;
+        }
+    }
+
+    pub fn draw(&self) {
+        self.screen.draw(self.data.clone());
     }
 }
 
@@ -429,7 +624,7 @@ async fn main() {
         //let frame_time = get_frame_time();
         //counter += frame_time;
         //while counter >= FIXED_DELTA {
-        game.update();
+        game.update().await;
         //    counter -= FIXED_DELTA;
         //}
 
