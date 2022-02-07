@@ -169,7 +169,7 @@ struct Gameplay {
     deref_delete: Vec<usize>,
 }
 
-#[async_trait]
+#[async_trait(?Send)]
 trait Screen {
     async fn update(&mut self, data: Arc<GameData>);
     fn draw(&self, data: Arc<GameData>);
@@ -251,7 +251,7 @@ impl Gameplay {
     }
 }
 
-#[async_trait]
+#[async_trait(?Send)]
 impl Screen for Gameplay {
     async fn update(&mut self, data: Arc<GameData>) {
         let catcher_y = self.catcher_y();
@@ -476,7 +476,7 @@ impl MainMenu {
     }
 }
 
-#[async_trait]
+#[async_trait(?Send)]
 impl Screen for MainMenu {
     async fn update(&mut self, data: Arc<GameData>) {
         let selected_map = self.selected_map.load(Ordering::Relaxed);
@@ -557,7 +557,7 @@ impl Screen for MainMenu {
     }
 }
 
-type ScreenQueueF = Pin<Box<dyn Future<Output = Box<dyn Screen>> + Send>>;
+type ScreenQueueF = Pin<Box<dyn Future<Output = Box<dyn Screen>>>>;
 
 struct GameData {
     #[allow(dead_code)]
