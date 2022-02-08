@@ -64,7 +64,7 @@ impl Chart {
             // TODO use same implementation as osu!catch.
             if let Some(next_hitobject) = beatmap.hit_objects.get(idx + 1) {
                 let next_fruit = Fruit::from_hitobject(next_hitobject);
-                let dist = next_fruit.position - fruit.position;
+                let dist = (next_fruit.position - fruit.position).abs();
                 let time = next_fruit.time - fruit.time;
                 let required_time = dist / catcher_speed(true, 1.);
                 if required_time > time {
@@ -95,11 +95,20 @@ struct ScoreRecorder {
     hit_count: u32,
     miss_count: u32,
 
-    // This needs to be tracked separately cause of floating point imprecision.
+    /// This needs to be tracked separately due to floating point imprecision.
     internal_score: f32,
-    // Max = 1,000,000
+    chain_miss_count: u32,
+
+    /// Max = 1,000,000
     score: u32,
+    /// [0, 1]
     accuracy: f32,
+    /// [0, 1]
+    hp: f32,
+}
+
+fn polynomial(x: f32, coeffs: &[f32]) -> f32 {
+    coeffs.iter().rev().fold(0., |acc, &c| acc * x + c)
 }
 
 impl ScoreRecorder {
@@ -111,8 +120,10 @@ impl ScoreRecorder {
             hit_count: 0,
             miss_count: 0,
             internal_score: 0.,
+            chain_miss_count: 0,
             score: 0,
             accuracy: 1.0,
+            hp: 1.0,
         }
     }
 
@@ -125,9 +136,34 @@ impl ScoreRecorder {
             self.score = (self.internal_score * 1_000_000. * 2. / (self.max_combo as f32 + 1.))
                 .round() as u32;
             self.hit_count += 1;
+            self.chain_miss_count = 0;
+
+            self.hp += (self.combo as f32 / self.max_combo as f32) * 0.1;
+            self.hp = self.hp.min(1.0);
         } else {
             self.combo = 0;
             self.miss_count += 1;
+
+            let hp_drain = polynomial(
+                self.chain_miss_count as f32,
+                &[
+                    1.0029920966561545e+000,
+                    7.4349034374388925e+000,
+                    -9.1951466248253642e+000,
+                    4.8111412580746844e+000,
+                    -1.2397067078689683e+000,
+                    1.7714300116489434e-001,
+                    -1.4390229652509492e-002,
+                    6.2392424752562498e-004,
+                    -1.1231385529709802e-005,
+                ],
+            ) / 40.;
+            dbg!(self.chain_miss_count);
+            println!("{}%", hp_drain * 100.);
+            self.hp -= hp_drain;
+            self.hp = self.hp.max(0.);
+
+            self.chain_miss_count += 1;
         }
 
         self.accuracy = self.hit_count as f32 / (self.hit_count + self.miss_count) as f32;
@@ -144,6 +180,36 @@ fn test_score_recorder_limits() {
         }
         assert_eq!(recorder.score, 1_000_000);
     }
+}
+
+#[test]
+fn test_hp() {
+    let mut recorder = ScoreRecorder::new(100);
+    assert_eq!(recorder.hp, 1.0);
+    for _ in 0..10 {
+        recorder.register_judgement(true);
+    }
+    assert_eq!(recorder.hp, 1.0);
+    recorder.register_judgement(false);
+    assert_eq!(recorder.hp, 0.9874626);
+    for _ in 0..10 {
+        recorder.register_judgement(true);
+    }
+    assert_eq!(recorder.hp, 1.0);
+    for _ in 0..3 {
+        recorder.register_judgement(false);
+    }
+    assert_eq!(recorder.hp, 0.91811043);
+    recorder.register_judgement(true);
+    for _ in 0..6 {
+        recorder.register_judgement(false);
+    }
+    assert_eq!(recorder.hp, 0.612908);
+    recorder.register_judgement(true);
+    for _ in 0..12 {
+        recorder.register_judgement(false);
+    }
+    assert_eq!(recorder.hp, 0.0);
 }
 
 struct Gameplay {
@@ -331,6 +397,18 @@ impl Screen for Gameplay {
             self.queued_fruits.remove(idx);
         }
 
+        if self.recorder.hp == 0. || self.queued_fruits.is_empty() {
+            *data.queued_screen.lock().unwrap() = Some(Box::new(ResultScreen {
+                title: "TODO".to_string(),
+                difficulty: "TODO".to_string(),
+                score: self.recorder.score,
+                hit_count: self.recorder.hit_count,
+                miss_count: self.recorder.miss_count,
+                top_combo: self.recorder.top_combo,
+                accuracy: self.recorder.accuracy,
+            }));
+        }
+
         if is_key_pressed(KeyCode::O) {
             self.show_debug_hitbox = !self.show_debug_hitbox;
         }
@@ -473,6 +551,81 @@ impl Screen for Gameplay {
             36.,
             WHITE,
         );
+
+        let text = format!("{}%", self.recorder.hp * 100.);
+        let text_dim = measure_text(&text, None, 36, 1.0);
+        draw_text(
+            &text,
+            screen_width() / 2. - text_dim.width / 2.,
+            23.,
+            36.,
+            WHITE,
+        );
+    }
+}
+
+struct ResultScreen {
+    title: String,
+    difficulty: String,
+
+    score: u32,
+    hit_count: u32,
+    miss_count: u32,
+    top_combo: u32,
+    accuracy: f32,
+}
+
+#[async_trait(?Send)]
+impl Screen for ResultScreen {
+    fn draw(&self, _data: Arc<GameData>) {
+        draw_text(
+            &self.title,
+            screen_width() / 2.,
+            screen_height() / 2. - 100.,
+            36.,
+            WHITE,
+        );
+        draw_text(
+            &self.difficulty,
+            screen_width() / 2.,
+            screen_height() / 2. - 50.,
+            36.,
+            WHITE,
+        );
+        draw_text(
+            &format!("{}x", self.top_combo),
+            screen_width() / 2.,
+            screen_height() / 2. - 10.,
+            36.,
+            WHITE,
+        );
+        draw_text(
+            &format!("{}/{}", self.hit_count, self.miss_count),
+            screen_width() / 2.,
+            screen_height() / 2. + 30.,
+            36.,
+            WHITE,
+        );
+        draw_text(
+            &format!("{}", self.score),
+            screen_width() / 2.,
+            screen_height() / 2. + 70.,
+            36.,
+            WHITE,
+        );
+        draw_text(
+            &format!("{:.2}%", self.accuracy * 100.),
+            screen_width() / 2.,
+            screen_height() / 2. + 110.,
+            36.,
+            WHITE,
+        );
+    }
+
+    async fn update(&mut self, data: Arc<GameData>) {
+        if is_key_pressed(KeyCode::Backspace) {
+            *data.queued_screen.lock().unwrap() = Some(Box::new(MainMenu::new(data.clone()).await));
+        }
     }
 }
 
