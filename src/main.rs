@@ -1,27 +1,21 @@
 #![feature(once_cell)]
 #![allow(clippy::eq_op)]
 use std::{
-    future::Future,
     io::Cursor,
     ops::Add,
-    pin::Pin,
-    sync::{
-        atomic::{AtomicBool, AtomicUsize, Ordering},
-        Arc, Mutex,
-    },
+    sync::{Arc, Mutex},
 };
 
 use async_trait::async_trait;
 use kira::{
-    instance::{handle::InstanceHandle, InstanceSettings, StopInstanceSettings},
+    instance::{
+        handle::InstanceHandle, InstanceSettings, PauseInstanceSettings, ResumeInstanceSettings,
+        StopInstanceSettings,
+    },
     manager::{AudioManager, AudioManagerSettings},
     sound::{Sound, SoundSettings},
 };
-use macroquad::{
-    hash,
-    prelude::*,
-    ui::{root_ui, widgets},
-};
+use macroquad::prelude::*;
 use num_format::{Locale, ToFormattedString};
 
 pub fn can_catch_fruit(catcher_hitbox: Rect, fruit_hitbox: Rect) -> bool {
@@ -167,6 +161,9 @@ struct Gameplay {
     chart: Chart,
     queued_fruits: Vec<usize>,
     deref_delete: Vec<usize>,
+
+    time_countdown: f32,
+    started: bool,
 }
 
 #[async_trait(?Send)]
@@ -202,11 +199,25 @@ impl Gameplay {
             .stop(StopInstanceSettings::new())
             .unwrap();
         *data.music.lock().unwrap() = sound.play(InstanceSettings::default().volume(0.5)).unwrap();
+        data.music
+            .lock()
+            .unwrap()
+            .pause(PauseInstanceSettings::new())
+            .unwrap();
+
+        let first_fruit = chart.fruits.first().unwrap();
+        let min_time_required = first_fruit.position / catcher_speed(false, 1.0);
+        let time_countdown = if min_time_required * 0.5 > first_fruit.time {
+            1.
+        } else {
+            0.
+        };
+        next_frame().await;
 
         Gameplay {
             background,
-            time: 0.,
-            prev_time: 0.,
+            time: -time_countdown,
+            prev_time: -time_countdown,
             recorder: ScoreRecorder::new(chart.fruits.len() as u32),
             position: 256.,
             hyper_multiplier: 1.,
@@ -214,6 +225,8 @@ impl Gameplay {
             queued_fruits: (0..chart.fruits.len()).collect(),
             chart,
             show_debug_hitbox: cfg!(debug_assertions),
+            time_countdown,
+            started: false,
         }
     }
 
@@ -256,8 +269,23 @@ impl Screen for Gameplay {
     async fn update(&mut self, data: Arc<GameData>) {
         let catcher_y = self.catcher_y();
 
-        self.prev_time = self.time;
-        self.time = data.music.lock().unwrap().position() as f32;
+        if !self.started {
+            self.prev_time = self.time;
+            self.time = -self.time_countdown;
+            if self.time_countdown > 0. {
+                self.time_countdown -= get_frame_time();
+            } else {
+                data.music
+                    .lock()
+                    .unwrap()
+                    .resume(ResumeInstanceSettings::new())
+                    .unwrap();
+                self.started = true;
+            }
+        } else {
+            self.prev_time = self.time;
+            self.time = data.music.lock().unwrap().position() as f32;
+        }
 
         self.position = self
             .position
@@ -305,6 +333,14 @@ impl Screen for Gameplay {
 
         if is_key_pressed(KeyCode::O) {
             self.show_debug_hitbox = !self.show_debug_hitbox;
+        }
+        if is_key_pressed(KeyCode::Escape) {
+            data.music
+                .lock()
+                .unwrap()
+                .stop(StopInstanceSettings::new())
+                .unwrap();
+            *data.queued_screen.lock().unwrap() = Some(Box::new(MainMenu::new(data.clone()).await));
         }
     }
 
@@ -440,38 +476,323 @@ impl Screen for Gameplay {
     }
 }
 
+struct Message {
+    sender: String,
+    data: MessageData,
+}
+
+enum MessageData {
+    MenuButton(MenuButtonMessage),
+    MenuButtonList(MenuButtonListMessage),
+}
+
+enum MenuButtonMessage {
+    Selected,
+    Unselected,
+    Hovered,
+    Unhovered,
+}
+
+trait UiElement {
+    fn draw(&self, data: Arc<GameData>);
+    fn update(&self, data: Arc<GameData>);
+    fn handle_message(&mut self, _message: &Message) {}
+}
+
+struct MenuButton {
+    id: String,
+    title: String,
+    rect: Rect,
+    tx: flume::Sender<Message>,
+    hovered: bool,
+    selected: bool,
+}
+const SELECTED_COLOR: Color = Color::new(1.0, 1.0, 1.0, 1.0);
+const HOVERED_COLOR: Color = Color::new(0.5, 0.5, 0.8, 1.0);
+const IDLE_COLOR: Color = Color::new(0.5, 0.5, 0.5, 1.0);
+
+impl MenuButton {
+    pub fn new(id: String, title: String, rect: Rect, tx: flume::Sender<Message>) -> Self {
+        MenuButton {
+            id,
+            title,
+            rect,
+            tx,
+            hovered: false,
+            selected: false,
+        }
+    }
+}
+
+impl UiElement for MenuButton {
+    fn draw(&self, data: Arc<GameData>) {
+        draw_texture_ex(
+            data.button,
+            self.rect.x,
+            self.rect.y,
+            if self.selected {
+                SELECTED_COLOR
+            } else if self.hovered {
+                HOVERED_COLOR
+            } else {
+                IDLE_COLOR
+            },
+            DrawTextureParams {
+                dest_size: Some(vec2(self.rect.w, self.rect.h)),
+                ..Default::default()
+            },
+        );
+        let title_length = measure_text(&self.title, None, 36, 1.);
+        draw_text(
+            &self.title,
+            self.rect.x + self.rect.w / 2. - title_length.width / 2.,
+            self.rect.y + self.rect.h / 2. - title_length.height / 2.,
+            36.,
+            WHITE,
+        )
+    }
+
+    fn update(&self, _data: Arc<GameData>) {
+        if self.rect.contains(mouse_position().into()) {
+            if !self.hovered {
+                self.tx
+                    .send(Message {
+                        sender: self.id.clone(),
+                        data: MessageData::MenuButton(MenuButtonMessage::Hovered),
+                    })
+                    .unwrap();
+            }
+            if is_mouse_button_pressed(MouseButton::Left) {
+                self.tx
+                    .send(Message {
+                        sender: self.id.clone(),
+                        data: MessageData::MenuButton(MenuButtonMessage::Selected),
+                    })
+                    .unwrap();
+            }
+        } else {
+            if self.hovered {
+                self.tx
+                    .send(Message {
+                        sender: self.id.clone(),
+                        data: MessageData::MenuButton(MenuButtonMessage::Unhovered),
+                    })
+                    .unwrap();
+            }
+        }
+    }
+
+    fn handle_message(&mut self, message: &Message) {
+        if message.sender == self.id {
+            if let MessageData::MenuButton(MenuButtonMessage::Hovered) = message.data {
+                self.hovered = true;
+            } else if let MessageData::MenuButton(MenuButtonMessage::Unhovered) = message.data {
+                self.hovered = false;
+            } else if let MessageData::MenuButton(MenuButtonMessage::Selected) = message.data {
+                self.selected = true;
+            } else if let MessageData::MenuButton(MenuButtonMessage::Unselected) = message.data {
+                self.selected = false;
+            }
+        }
+    }
+}
+
+enum MenuButtonListMessage {
+    Click(usize),
+    Selected(usize),
+}
+
+struct MenuButtonList {
+    id: String,
+    buttons: Vec<MenuButton>,
+    selected: usize,
+    tx: flume::Sender<Message>,
+}
+
+impl MenuButtonList {
+    pub fn new(
+        id: String,
+        x: f32,
+        y: f32,
+        w: f32,
+        h: f32,
+        titles: &[String],
+        tx: flume::Sender<Message>,
+    ) -> Self {
+        let button_height = h / titles.len() as f32;
+        MenuButtonList {
+            id: id.clone(),
+            buttons: titles
+                .iter()
+                .enumerate()
+                .map(|(idx, title)| {
+                    MenuButton::new(
+                        format!("{}-{}", &id, idx),
+                        title.clone(),
+                        Rect::new(x, y + (button_height + 5.) * idx as f32, w, button_height),
+                        tx.clone(),
+                    )
+                })
+                .collect(),
+            selected: 0,
+            tx,
+        }
+    }
+}
+
+impl UiElement for MenuButtonList {
+    fn draw(&self, data: Arc<GameData>) {
+        for button in &self.buttons {
+            button.draw(data.clone());
+        }
+    }
+
+    fn update(&self, data: Arc<GameData>) {
+        for button in &self.buttons {
+            button.update(data.clone());
+        }
+
+        if is_key_pressed(KeyCode::Down) {
+            self.tx
+                .send(Message {
+                    sender: self.id.clone(),
+                    data: MessageData::MenuButtonList(MenuButtonListMessage::Click(
+                        (self.selected + 1) % self.buttons.len(),
+                    )),
+                })
+                .unwrap();
+        } else if is_key_pressed(KeyCode::Up) {
+            self.tx
+                .send(Message {
+                    sender: self.id.clone(),
+                    data: MessageData::MenuButtonList(MenuButtonListMessage::Click(
+                        (self.selected + self.buttons.len() - 1) % self.buttons.len(),
+                    )),
+                })
+                .unwrap();
+        }
+    }
+
+    fn handle_message(&mut self, message: &Message) {
+        if message.sender == self.id {
+            if let MessageData::MenuButtonList(MenuButtonListMessage::Click(idx)) = message.data {
+                self.tx
+                    .send(Message {
+                        sender: self.buttons[self.selected].id.clone(),
+                        data: MessageData::MenuButton(MenuButtonMessage::Unselected),
+                    })
+                    .unwrap();
+                self.tx
+                    .send(Message {
+                        sender: self.buttons[idx].id.clone(),
+                        data: MessageData::MenuButton(MenuButtonMessage::Selected),
+                    })
+                    .unwrap();
+            }
+        }
+        if message.sender.starts_with(&self.id) {
+            if let MessageData::MenuButton(MenuButtonMessage::Selected) = message.data {
+                for (idx, button) in self.buttons.iter().enumerate() {
+                    if button.id == message.sender {
+                        self.selected = idx;
+                        self.tx
+                            .send(Message {
+                                sender: self.id.clone(),
+                                data: MessageData::MenuButtonList(MenuButtonListMessage::Selected(
+                                    idx,
+                                )),
+                            })
+                            .unwrap();
+                    } else {
+                        button
+                            .tx
+                            .send(Message {
+                                sender: button.id.clone(),
+                                data: MessageData::MenuButton(MenuButtonMessage::Unselected),
+                            })
+                            .unwrap();
+                    }
+                }
+            }
+            for button in &mut self.buttons {
+                button.handle_message(message);
+            }
+        }
+    }
+}
+
 struct MapListing {
-    name: String,
+    title: String,
     difficulties: Vec<String>,
 }
 
 struct MainMenu {
     maps: Vec<MapListing>,
     prev_selected_map: usize,
-    selected_map: AtomicUsize,
-    selected_difficulty: AtomicUsize,
+    selected_map: usize,
+    selected_difficulty: usize,
+
+    rx: flume::Receiver<Message>,
+    tx: flume::Sender<Message>,
+    map_list: MenuButtonList,
+    difficulty_list: Option<MenuButtonList>,
+
+    start: MenuButton,
     loading: bool,
-    done: AtomicBool,
 }
 
 impl MainMenu {
     pub async fn new(_data: Arc<GameData>) -> Self {
+        let (tx, rx) = flume::unbounded();
+        let maps = vec![
+            MapListing {
+                title: "Kizuato".to_string(),
+                difficulties: vec!["Platter".to_string(), "Ascendance's Rain".to_string()],
+            },
+            MapListing {
+                title: "Padoru".to_string(),
+                difficulties: vec!["Salad".to_string(), "Platter".to_string()],
+            },
+        ];
+        let map_list = MenuButtonList::new(
+            "button_list".to_string(),
+            0.,
+            0.,
+            400.,
+            100. * maps.len() as f32,
+            maps.iter()
+                .map(|map| map.title.clone())
+                .collect::<Vec<_>>()
+                .as_slice(),
+            tx.clone(),
+        );
+        tx.send(Message {
+            sender: map_list.id.clone(),
+            data: MessageData::MenuButtonList(MenuButtonListMessage::Click(0)),
+        })
+        .unwrap();
         MainMenu {
-            maps: vec![
-                MapListing {
-                    name: "Kizuato".to_string(),
-                    difficulties: vec!["Platter".to_string(), "Ascendance's Rain".to_string()],
-                },
-                MapListing {
-                    name: "Padoru".to_string(),
-                    difficulties: vec!["Salad".to_string(), "Platter".to_string()],
-                },
-            ],
-            prev_selected_map: 0,
-            selected_map: AtomicUsize::new(0),
-            selected_difficulty: AtomicUsize::new(0),
+            prev_selected_map: usize::MAX,
+            selected_map: usize::MAX,
+            selected_difficulty: 0,
+
+            maps,
+            rx,
+            tx: tx.clone(),
+            map_list,
+            difficulty_list: None,
+            start: MenuButton::new(
+                "start".to_string(),
+                "Start".to_string(),
+                Rect::new(
+                    screen_width() / 2. - 400. / 2.,
+                    screen_height() - 100.,
+                    400.,
+                    100.,
+                ),
+                tx,
+            ),
             loading: false,
-            done: AtomicBool::new(false),
         }
     }
 }
@@ -479,12 +800,10 @@ impl MainMenu {
 #[async_trait(?Send)]
 impl Screen for MainMenu {
     async fn update(&mut self, data: Arc<GameData>) {
-        let selected_map = self.selected_map.load(Ordering::Relaxed);
-        if selected_map != self.prev_selected_map {
-            self.prev_selected_map = selected_map;
+        if self.selected_map != self.prev_selected_map {
             let song = load_file(&format!(
                 "resources/{}/audio.wav",
-                self.maps[selected_map].name
+                self.maps[self.selected_map].title
             ))
             .await
             .unwrap();
@@ -498,75 +817,106 @@ impl Screen for MainMenu {
                 .unwrap();
             *data.music.lock().unwrap() =
                 sound.play(InstanceSettings::default().volume(0.5)).unwrap();
-        }
-        if self.done.load(Ordering::Relaxed) {
-            async fn fut(data: Arc<GameData>, map: String, diff: String) -> Box<dyn Screen> {
-                Box::new(Gameplay::new(data, &map, &diff).await)
-            }
-            let map = &self.maps[selected_map];
-            let fut = fut(
-                data.clone(),
-                map.name.clone(),
-                map.difficulties[self.selected_difficulty.load(Ordering::Relaxed)].clone(),
+
+            let difficulty_list = MenuButtonList::new(
+                "difficulty_list".to_string(),
+                500.,
+                0.,
+                400.,
+                100. * self.maps[self.selected_map].difficulties.len() as f32,
+                self.maps[self.selected_map]
+                    .difficulties
+                    .iter()
+                    .map(|diff| diff.clone())
+                    .collect::<Vec<_>>()
+                    .as_slice(),
+                self.tx.clone(),
             );
-            *data.queued_screen.lock().unwrap() = Some(Box::pin(fut));
+            self.tx
+                .send(Message {
+                    sender: difficulty_list.id.clone(),
+                    data: MessageData::MenuButtonList(MenuButtonListMessage::Click(0)),
+                })
+                .unwrap();
+            self.difficulty_list = Some(difficulty_list);
+
+            self.prev_selected_map = self.selected_map;
+
+            self.loading = false;
         }
+        for message in self.rx.drain() {
+            self.map_list.handle_message(&message);
+            if let Some(ref mut difficulty_list) = self.difficulty_list {
+                difficulty_list.handle_message(&message);
+            }
+            self.start.handle_message(&message);
+            if message.sender == self.map_list.id {
+                if let MessageData::MenuButtonList(MenuButtonListMessage::Selected(idx)) =
+                    message.data
+                {
+                    self.selected_map = idx;
+                    self.loading = true;
+                }
+            }
+            if let Some(ref mut difficulty_list) = self.difficulty_list {
+                if message.sender == difficulty_list.id {
+                    if let MessageData::MenuButtonList(MenuButtonListMessage::Selected(idx)) =
+                        message.data
+                    {
+                        self.selected_difficulty = idx;
+                    }
+                }
+            }
+            if message.sender == self.start.id {
+                if let MessageData::MenuButton(MenuButtonMessage::Selected) = message.data {
+                    let map = &self.maps[self.selected_map];
+                    *data.queued_screen.lock().unwrap() = Some(Box::new(
+                        Gameplay::new(
+                            data.clone(),
+                            &map.title,
+                            &map.difficulties[self.selected_difficulty],
+                        )
+                        .await,
+                    ));
+                }
+            }
+        }
+        self.map_list.update(data.clone());
+        if let Some(difficulty_list) = &self.difficulty_list {
+            difficulty_list.update(data.clone());
+        }
+        self.start.update(data.clone());
     }
 
-    fn draw(&self, _data: Arc<GameData>) {
-        if !self.loading {
-            widgets::Window::new(hash!("MapList"), vec2(0., 0.), vec2(260., 400.)).ui(
-                &mut root_ui(),
-                |ui| {
-                    let selected_map_idx = self.selected_map.load(Ordering::Relaxed);
-                    for (idx, map) in self.maps.iter().enumerate() {
-                        if ui.button(
-                            vec2(
-                                if idx == selected_map_idx { 20. } else { 0. },
-                                80.0 * idx as f32,
-                            ),
-                            map.name.as_str(),
-                        ) {
-                            self.selected_map.store(idx, Ordering::Relaxed);
-                        }
-                    }
+    fn draw(&self, data: Arc<GameData>) {
+        self.map_list.draw(data.clone());
+        if let Some(ref list) = self.difficulty_list {
+            list.draw(data.clone());
+        }
+        self.start.draw(data.clone());
 
-                    let map = &self.maps[self.selected_map.load(Ordering::Relaxed)];
-                    for (idx, difficulty) in map.difficulties.iter().enumerate() {
-                        if ui.button(
-                            vec2(56.0 * idx as f32, 80.0 * self.maps.len() as f32),
-                            difficulty.as_str(),
-                        ) {
-                            self.selected_difficulty.store(idx, Ordering::Relaxed);
-                        }
-                    }
-
-                    if ui.button(
-                        vec2(0.0, 80.0 * self.maps.len() as f32 + 26.),
-                        format!(
-                            "Start '{} [{}]'",
-                            map.name,
-                            map.difficulties[self.selected_difficulty.load(Ordering::Relaxed)]
-                        ),
-                    ) {
-                        self.done.store(true, Ordering::Relaxed);
-                    }
-                },
+        if self.loading {
+            let loading_dim = measure_text("Loading...", None, 36, 1.);
+            draw_text(
+                "Loading...",
+                screen_width() / 2. - loading_dim.width / 2.,
+                screen_height() / 2. - loading_dim.height / 2.,
+                36.,
+                WHITE,
             );
         }
     }
 }
-
-type ScreenQueueF = Pin<Box<dyn Future<Output = Box<dyn Screen>>>>;
 
 struct GameData {
     #[allow(dead_code)]
     audio: Mutex<AudioManager>,
     catcher: Texture2D,
     fruit: Texture2D,
+    button: Texture2D,
 
     music: Mutex<InstanceHandle>,
-    queued_screen: Mutex<Option<ScreenQueueF>>,
+    queued_screen: Mutex<Option<Box<dyn Screen>>>,
 }
 
 struct Game {
@@ -574,31 +924,27 @@ struct Game {
     screen: Box<dyn Screen>,
 }
 
-//const FIXED_DELTA: f32 = 1. / 60.;
-
 impl Game {
     pub async fn new() -> Self {
         let mut audio = AudioManager::new(AudioManagerSettings::default()).unwrap();
-
-        let catcher = load_texture("resources/catcher.png").await.unwrap();
-        let fruit = load_texture("resources/fruit.png").await.unwrap();
 
         let song = load_file("resources/Kizuato/audio.wav").await.unwrap();
         let sound_data =
             Sound::from_wav_reader(Cursor::new(song), SoundSettings::default()).unwrap();
         let mut sound = audio.add_sound(sound_data).unwrap();
-        let instance = sound.play(InstanceSettings::default().volume(0.5)).unwrap();
+        let mut instance = sound.play(InstanceSettings::default().volume(0.5)).unwrap();
+        instance.stop(StopInstanceSettings::new()).unwrap();
 
         let data = Arc::new(GameData {
+            button: load_texture("resources/button.png").await.unwrap(),
+            catcher: load_texture("resources/catcher.png").await.unwrap(),
+            fruit: load_texture("resources/fruit.png").await.unwrap(),
             audio: Mutex::new(audio),
-            catcher,
-            fruit,
             music: Mutex::new(instance),
             queued_screen: Mutex::new(None),
         });
 
         Game {
-            //screen: Box::new(Gameplay::new(data.clone()).await),
             screen: Box::new(MainMenu::new(data.clone()).await),
             data,
         }
@@ -607,7 +953,7 @@ impl Game {
     pub async fn update(&mut self) {
         self.screen.update(self.data.clone()).await;
         if let Some(queued_screen) = self.data.queued_screen.lock().unwrap().take() {
-            self.screen = queued_screen.await;
+            self.screen = queued_screen;
         }
     }
 
@@ -619,14 +965,8 @@ impl Game {
 #[macroquad::main(window_conf)]
 async fn main() {
     let mut game = Game::new().await;
-    //let mut counter = 0.;
     loop {
-        //let frame_time = get_frame_time();
-        //counter += frame_time;
-        //while counter >= FIXED_DELTA {
         game.update().await;
-        //    counter -= FIXED_DELTA;
-        //}
 
         clear_background(BLACK);
         game.draw();
