@@ -493,8 +493,27 @@ enum MenuButtonMessage {
     Unhovered,
 }
 
+// Implementors assumed to call set_bounds in its new() method.
+// Implementors assumed propogate draw_bounds to children.
 trait UiElement {
     fn draw(&self, data: Arc<GameData>);
+    fn draw_bounds(&self) {
+        let bounds = self.bounds();
+        draw_rectangle(
+            bounds.x,
+            bounds.y,
+            bounds.w,
+            bounds.h,
+            Color::new(1.0, 0.0, 0.0, 0.5),
+        );
+    }
+
+    fn set_bounds(&mut self, rect: Rect);
+    fn bounds(&self) -> Rect;
+    fn refresh_bounds(&mut self) {
+        self.set_bounds(self.bounds());
+    }
+
     fn update(&self, data: Arc<GameData>);
     fn handle_message(&mut self, _message: &Message) {}
 }
@@ -513,14 +532,16 @@ const IDLE_COLOR: Color = Color::new(0.5, 0.5, 0.5, 1.0);
 
 impl MenuButton {
     pub fn new(id: String, title: String, rect: Rect, tx: flume::Sender<Message>) -> Self {
-        MenuButton {
+        let mut button = MenuButton {
             id,
             title,
-            rect,
+            rect: Rect::default(),
             tx,
             hovered: false,
             selected: false,
-        }
+        };
+        button.set_bounds(rect);
+        button
     }
 }
 
@@ -595,6 +616,14 @@ impl UiElement for MenuButton {
             }
         }
     }
+
+    fn set_bounds(&mut self, rect: Rect) {
+        self.rect = rect;
+    }
+
+    fn bounds(&self) -> Rect {
+        self.rect
+    }
 }
 
 enum MenuButtonListMessage {
@@ -607,20 +636,12 @@ struct MenuButtonList {
     buttons: Vec<MenuButton>,
     selected: usize,
     tx: flume::Sender<Message>,
+    rect: Rect,
 }
 
 impl MenuButtonList {
-    pub fn new(
-        id: String,
-        x: f32,
-        y: f32,
-        w: f32,
-        h: f32,
-        titles: &[String],
-        tx: flume::Sender<Message>,
-    ) -> Self {
-        let button_height = h / titles.len() as f32;
-        MenuButtonList {
+    pub fn new(id: String, rect: Rect, titles: &[String], tx: flume::Sender<Message>) -> Self {
+        let mut list = MenuButtonList {
             id: id.clone(),
             buttons: titles
                 .iter()
@@ -629,14 +650,17 @@ impl MenuButtonList {
                     MenuButton::new(
                         format!("{}-{}", &id, idx),
                         title.clone(),
-                        Rect::new(x, y + (button_height + 5.) * idx as f32, w, button_height),
+                        Rect::default(),
                         tx.clone(),
                     )
                 })
                 .collect(),
             selected: 0,
             tx,
-        }
+            rect: Rect::default(),
+        };
+        list.set_bounds(rect);
+        list
     }
 }
 
@@ -719,6 +743,37 @@ impl UiElement for MenuButtonList {
             }
         }
     }
+
+    fn set_bounds(&mut self, rect: Rect) {
+        let button_height = rect.h / self.buttons.len() as f32;
+        for (idx, button) in self.buttons.iter_mut().enumerate() {
+            button.set_bounds(Rect::new(
+                rect.x,
+                rect.y + (button_height + 5.) * idx as f32,
+                rect.w,
+                button_height,
+            ));
+        }
+        self.rect = rect;
+    }
+
+    fn bounds(&self) -> Rect {
+        self.rect
+    }
+
+    fn draw_bounds(&self) {
+        let bounds = self.bounds();
+        draw_rectangle(
+            bounds.x,
+            bounds.y,
+            bounds.w,
+            bounds.h,
+            Color::new(0.0, 0.0, 0.5, 0.5),
+        );
+        for button in &self.buttons {
+            button.draw_bounds();
+        }
+    }
 }
 
 struct MapListing {
@@ -756,10 +811,7 @@ impl MainMenu {
         ];
         let map_list = MenuButtonList::new(
             "button_list".to_string(),
-            0.,
-            0.,
-            400.,
-            100. * maps.len() as f32,
+            Rect::new(0., 0., 400., 100. * maps.len() as f32),
             maps.iter()
                 .map(|map| map.title.clone())
                 .collect::<Vec<_>>()
@@ -820,10 +872,12 @@ impl Screen for MainMenu {
 
             let difficulty_list = MenuButtonList::new(
                 "difficulty_list".to_string(),
-                500.,
-                0.,
-                400.,
-                100. * self.maps[self.selected_map].difficulties.len() as f32,
+                Rect::new(
+                    500.,
+                    0.,
+                    400.,
+                    100. * self.maps[self.selected_map].difficulties.len() as f32,
+                ),
                 self.maps[self.selected_map]
                     .difficulties
                     .iter()
