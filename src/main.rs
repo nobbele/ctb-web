@@ -667,31 +667,50 @@ trait UiElement {
         self.set_bounds(self.bounds());
     }
 
-    fn update(&self, data: Arc<GameData>);
+    fn update(&mut self, data: Arc<GameData>);
     fn handle_message(&mut self, _message: &Message) {}
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+enum Popout {
+    None,
+    Left,
+    Right,
 }
 
 struct MenuButton {
     id: String,
     title: String,
     rect: Rect,
+    visible_rect: Rect,
     tx: flume::Sender<Message>,
     hovered: bool,
     selected: bool,
+    offset: f32,
+    popout: Popout,
 }
 const SELECTED_COLOR: Color = Color::new(1.0, 1.0, 1.0, 1.0);
 const HOVERED_COLOR: Color = Color::new(0.5, 0.5, 0.8, 1.0);
 const IDLE_COLOR: Color = Color::new(0.5, 0.5, 0.5, 1.0);
 
 impl MenuButton {
-    pub fn new(id: String, title: String, rect: Rect, tx: flume::Sender<Message>) -> Self {
+    pub fn new(
+        id: String,
+        title: String,
+        popout: Popout,
+        rect: Rect,
+        tx: flume::Sender<Message>,
+    ) -> Self {
         let mut button = MenuButton {
             id,
             title,
             rect: Rect::default(),
+            visible_rect: Rect::default(),
             tx,
             hovered: false,
             selected: false,
+            offset: 0.,
+            popout,
         };
         button.set_bounds(rect);
         button
@@ -702,8 +721,8 @@ impl UiElement for MenuButton {
     fn draw(&self, data: Arc<GameData>) {
         draw_texture_ex(
             data.button,
-            self.rect.x,
-            self.rect.y,
+            self.visible_rect.x,
+            self.visible_rect.y,
             if self.selected {
                 SELECTED_COLOR
             } else if self.hovered {
@@ -712,22 +731,22 @@ impl UiElement for MenuButton {
                 IDLE_COLOR
             },
             DrawTextureParams {
-                dest_size: Some(vec2(self.rect.w, self.rect.h)),
+                dest_size: Some(vec2(self.visible_rect.w, self.visible_rect.h)),
                 ..Default::default()
             },
         );
         let title_length = measure_text(&self.title, None, 36, 1.);
         draw_text(
             &self.title,
-            self.rect.x + self.rect.w / 2. - title_length.width / 2.,
-            self.rect.y + self.rect.h / 2. - title_length.height / 2.,
+            self.visible_rect.x + self.visible_rect.w / 2. - title_length.width / 2.,
+            self.visible_rect.y + self.visible_rect.h / 2. - title_length.height / 2.,
             36.,
             WHITE,
         )
     }
 
-    fn update(&self, _data: Arc<GameData>) {
-        if self.rect.contains(mouse_position().into()) {
+    fn update(&mut self, _data: Arc<GameData>) {
+        if self.visible_rect.contains(mouse_position().into()) {
             if !self.hovered {
                 self.tx
                     .send(Message {
@@ -754,6 +773,29 @@ impl UiElement for MenuButton {
                     .unwrap();
             }
         }
+
+        if self.selected {
+            self.offset += 2. * get_frame_time();
+        } else if self.hovered {
+            if self.offset <= 0.8 {
+                self.offset += 2. * get_frame_time();
+                self.offset = self.offset.min(0.8);
+            }
+        } else {
+            self.offset -= 2. * get_frame_time();
+        }
+        self.offset = self.offset.clamp(0., 1.0);
+        let x_offset = self.offset * self.rect.w / 4.;
+
+        match self.popout {
+            Popout::None => {}
+            Popout::Left => {
+                self.visible_rect.x = self.rect.x - x_offset;
+            }
+            Popout::Right => {
+                self.visible_rect.x = self.rect.x + x_offset;
+            }
+        }
     }
 
     fn handle_message(&mut self, message: &Message) {
@@ -772,6 +814,7 @@ impl UiElement for MenuButton {
 
     fn set_bounds(&mut self, rect: Rect) {
         self.rect = rect;
+        self.visible_rect = rect;
     }
 
     fn bounds(&self) -> Rect {
@@ -793,7 +836,13 @@ struct MenuButtonList {
 }
 
 impl MenuButtonList {
-    pub fn new(id: String, rect: Rect, titles: &[String], tx: flume::Sender<Message>) -> Self {
+    pub fn new(
+        id: String,
+        popout: Popout,
+        rect: Rect,
+        titles: &[String],
+        tx: flume::Sender<Message>,
+    ) -> Self {
         let mut list = MenuButtonList {
             id: id.clone(),
             buttons: titles
@@ -803,6 +852,7 @@ impl MenuButtonList {
                     MenuButton::new(
                         format!("{}-{}", &id, idx),
                         title.clone(),
+                        popout,
                         Rect::default(),
                         tx.clone(),
                     )
@@ -824,8 +874,8 @@ impl UiElement for MenuButtonList {
         }
     }
 
-    fn update(&self, data: Arc<GameData>) {
-        for button in &self.buttons {
+    fn update(&mut self, data: Arc<GameData>) {
+        for button in &mut self.buttons {
             button.update(data.clone());
         }
 
@@ -898,13 +948,13 @@ impl UiElement for MenuButtonList {
     }
 
     fn set_bounds(&mut self, rect: Rect) {
-        let button_height = rect.h / self.buttons.len() as f32;
+        //let button_height = rect.h / self.buttons.len() as f32;
         for (idx, button) in self.buttons.iter_mut().enumerate() {
             button.set_bounds(Rect::new(
                 rect.x,
-                rect.y + (button_height + 5.) * idx as f32,
+                rect.y + (100. + 5.) * idx as f32,
                 rect.w,
-                button_height,
+                100.,
             ));
         }
         self.rect = rect;
@@ -961,10 +1011,22 @@ impl MainMenu {
                 title: "Padoru".to_string(),
                 difficulties: vec!["Salad".to_string(), "Platter".to_string()],
             },
+            MapListing {
+                title: "Troublemaker".to_string(),
+                difficulties: vec![
+                    "Cup".to_string(),
+                    "Equim's Rain".to_string(),
+                    "Kagari's Himedose".to_string(),
+                    "MBomb's Light Rain".to_string(),
+                    "Platter".to_string(),
+                    "tocean's Salad".to_string(),
+                ],
+            },
         ];
         let map_list = MenuButtonList::new(
             "button_list".to_string(),
-            Rect::new(0., 0., 400., 100. * maps.len() as f32),
+            Popout::Right,
+            Rect::new(-400. / 4., 0., 400., 400.),
             maps.iter()
                 .map(|map| map.title.clone())
                 .collect::<Vec<_>>()
@@ -989,6 +1051,7 @@ impl MainMenu {
             start: MenuButton::new(
                 "start".to_string(),
                 "Start".to_string(),
+                Popout::None,
                 Rect::new(
                     screen_width() / 2. - 400. / 2.,
                     screen_height() - 100.,
@@ -1025,12 +1088,8 @@ impl Screen for MainMenu {
 
             let difficulty_list = MenuButtonList::new(
                 "difficulty_list".to_string(),
-                Rect::new(
-                    500.,
-                    0.,
-                    400.,
-                    100. * self.maps[self.selected_map].difficulties.len() as f32,
-                ),
+                Popout::Left,
+                Rect::new(screen_width() - 400. + 400. / 4., 0., 400., 400.),
                 self.maps[self.selected_map]
                     .difficulties
                     .iter()
@@ -1089,7 +1148,7 @@ impl Screen for MainMenu {
             }
         }
         self.map_list.update(data.clone());
-        if let Some(difficulty_list) = &self.difficulty_list {
+        if let Some(difficulty_list) = &mut self.difficulty_list {
             difficulty_list.update(data.clone());
         }
         self.start.update(data.clone());
