@@ -2,6 +2,7 @@
 #![allow(clippy::eq_op)]
 use std::{
     cell::Cell,
+    collections::HashMap,
     io::Cursor,
     ops::Add,
     sync::{Arc, Mutex},
@@ -19,6 +20,62 @@ use kira::{
 use macroquad::prelude::*;
 use num_format::{Locale, ToFormattedString};
 use ringbuffer::{ConstGenericRingBuffer, RingBuffer, RingBufferExt, RingBufferWrite};
+use serde::ser::SerializeMap;
+
+pub fn set_value<T: serde::Serialize>(key: &str, value: T) {
+    let value = serde_json::to_value(value).unwrap();
+    #[cfg(target_family = "wasm")]
+    {
+        let storage = web_sys::window().unwrap().local_storage().unwrap().unwrap();
+        storage.set_item(key, &value.to_string()).unwrap();
+    }
+    #[cfg(not(target_family = "wasm"))]
+    {
+        let mut config: HashMap<String, serde_json::Value> =
+            match std::fs::OpenOptions::new().read(true).open("config.json") {
+                Ok(file) => serde_json::from_reader(file).unwrap(),
+                Err(e) => {
+                    if e.kind() == std::io::ErrorKind::NotFound {
+                        HashMap::new()
+                    } else {
+                        panic!("{:?}", e)
+                    }
+                }
+            };
+
+        config.insert(key.to_string(), value);
+        let file = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open("config.json")
+            .unwrap();
+        serde_json::to_writer(file, &config).unwrap();
+    }
+}
+
+pub fn get_value<T: serde::de::DeserializeOwned>(key: &str) -> Option<T> {
+    #[cfg(target_family = "wasm")]
+    {
+        let storage = web_sys::window().unwrap().local_storage().unwrap().unwrap();
+        let value = storage.get_item(key).unwrap().unwrap();
+        serde_json::from_str(&value).unwrap()
+    }
+    #[cfg(not(target_family = "wasm"))]
+    {
+        let document = match std::fs::OpenOptions::new().read(true).open("config.json") {
+            Ok(file) => serde_json::from_reader(file).unwrap(),
+            Err(e) => {
+                if e.kind() == std::io::ErrorKind::NotFound {
+                    serde_json::Value::Object(serde_json::Map::new())
+                } else {
+                    panic!("{:?}", e)
+                }
+            }
+        };
+        serde_json::from_value(document.get(key)?.clone()).ok()
+    }
+}
 
 pub fn can_catch_fruit(catcher_hitbox: Rect, fruit_hitbox: Rect) -> bool {
     catcher_hitbox.intersect(fruit_hitbox).is_some()
@@ -311,8 +368,8 @@ impl Gameplay {
         self.catcher_y() * progress
     }
 
-    pub fn catcher_speed(&self) -> f32 {
-        catcher_speed(is_key_down(KeyCode::RightShift), self.hyper_multiplier)
+    pub fn catcher_speed(&self, dash: KeyCode) -> f32 {
+        catcher_speed(is_key_down(dash), self.hyper_multiplier)
     }
 
     pub fn playfield_to_screen_x(&self, x: f32) -> f32 {
@@ -330,14 +387,15 @@ impl Gameplay {
         512.
     }
 
-    pub fn movement_direction(&self) -> i32 {
-        is_key_down(KeyCode::D) as i32 - is_key_down(KeyCode::A) as i32
+    pub fn movement_direction(&self, left: KeyCode, right: KeyCode) -> i32 {
+        is_key_down(right) as i32 - is_key_down(left) as i32
     }
 }
 
 #[async_trait(?Send)]
 impl Screen for Gameplay {
     async fn update(&mut self, data: Arc<GameData>) {
+        let binds = data.binds.get();
         let catcher_y = self.catcher_y();
 
         if !self.started {
@@ -384,7 +442,11 @@ impl Screen for Gameplay {
 
         self.position = self
             .position
-            .add(self.movement_direction() as f32 * self.catcher_speed() * get_frame_time() /*FIXED_DELTA*/)
+            .add(
+                self.movement_direction(binds.left, binds.right) as f32
+                    * self.catcher_speed(binds.dash)
+                    * get_frame_time(),
+            )
             .clamp(0., self.playfield_width());
 
         let fruit_travel_distance = self.fruit_y(self.time, 0.) - self.fruit_y(self.prev_time, 0.);
@@ -706,6 +768,7 @@ enum Popout {
     None,
     Left,
     Right,
+    Towards,
 }
 
 struct MenuButton {
@@ -814,6 +877,7 @@ impl UiElement for MenuButton {
         }
         self.offset = self.offset.clamp(0., 1.0);
         let x_offset = self.offset * self.rect.w / 4.;
+        let y_offset = self.offset * self.rect.h / 4.;
 
         match self.popout {
             Popout::None => {}
@@ -822,6 +886,12 @@ impl UiElement for MenuButton {
             }
             Popout::Right => {
                 self.visible_rect.x = self.rect.x + x_offset;
+            }
+            Popout::Towards => {
+                self.visible_rect.w = self.rect.w + x_offset;
+                self.visible_rect.h = self.rect.h + y_offset;
+                self.visible_rect.x = self.rect.x - x_offset / 2.;
+                self.visible_rect.y = self.rect.y - y_offset / 2.;
             }
         }
     }
@@ -868,7 +938,7 @@ impl MenuButtonList {
         id: String,
         popout: Popout,
         rect: Rect,
-        titles: &[String],
+        titles: &[&str],
         tx: flume::Sender<Message>,
     ) -> Self {
         let mut list = MenuButtonList {
@@ -876,10 +946,10 @@ impl MenuButtonList {
             buttons: titles
                 .iter()
                 .enumerate()
-                .map(|(idx, title)| {
+                .map(|(idx, &title)| {
                     MenuButton::new(
                         format!("{}-{}", &id, idx),
-                        title.clone(),
+                        title.to_owned(),
                         popout,
                         Rect::default(),
                         tx.clone(),
@@ -1056,7 +1126,7 @@ impl MainMenu {
             Popout::Right,
             Rect::new(-400. / 4., 0., 400., 400.),
             maps.iter()
-                .map(|map| map.title.clone())
+                .map(|map| map.title.as_str())
                 .collect::<Vec<_>>()
                 .as_slice(),
             tx.clone(),
@@ -1118,7 +1188,11 @@ impl Screen for MainMenu {
                 "difficulty_list".to_string(),
                 Popout::Left,
                 Rect::new(screen_width() - 400. + 400. / 4., 0., 400., 400.),
-                &self.maps[self.selected_map].difficulties.clone(),
+                &self.maps[self.selected_map]
+                    .difficulties
+                    .iter()
+                    .map(|s| s.as_str())
+                    .collect::<Vec<_>>(),
                 self.tx.clone(),
             );
             self.tx
@@ -1197,6 +1271,141 @@ impl Screen for MainMenu {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+struct KeyBinds {
+    right: KeyCode,
+    left: KeyCode,
+    dash: KeyCode,
+}
+
+impl serde::Serialize for KeyBinds {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let mut map = serializer.serialize_map(Some(3))?;
+        map.serialize_entry("left", &(self.left as u32))?;
+        map.serialize_entry("right", &(self.right as u32))?;
+        map.serialize_entry("dash", &(self.dash as u32))?;
+        map.end()
+    }
+}
+
+struct KeyBindVisitor;
+
+impl<'de> serde::de::Visitor<'de> for KeyBindVisitor {
+    type Value = KeyBinds;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        formatter.write_str("Expected a map with the keys 'left', 'right', and 'dash'")
+    }
+
+    fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+    where
+        A: serde::de::MapAccess<'de>,
+    {
+        let mut binds = KeyBinds {
+            right: KeyCode::D,
+            left: KeyCode::A,
+            dash: KeyCode::RightShift,
+        };
+        while let Some((key, value)) = map.next_entry::<_, u32>()? {
+            match key {
+                "left" => {
+                    binds.left = KeyCode::from(value);
+                }
+                "right" => {
+                    binds.right = KeyCode::from(value);
+                }
+                "dash" => {
+                    binds.dash = KeyCode::from(value);
+                }
+                _ => panic!(),
+            }
+        }
+        Ok(binds)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for KeyBinds {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        Ok(deserializer.deserialize_map(KeyBindVisitor)?)
+    }
+}
+
+struct Setup {
+    binding_types: MenuButtonList,
+    rx: flume::Receiver<Message>,
+}
+
+impl Setup {
+    pub fn new() -> Self {
+        let (tx, rx) = flume::unbounded();
+        Setup {
+            binding_types: MenuButtonList::new(
+                "binding_types".to_string(),
+                Popout::Towards,
+                Rect::new(
+                    screen_width() / 2. - 400. / 2.,
+                    screen_height() / 2. - 105. * 3. / 2.,
+                    400.,
+                    400.,
+                ),
+                &[
+                    "Left-handed (A D RShift)",
+                    "Right-handed (Left Right LShift)",
+                    "Custom (TODO)",
+                ],
+                tx,
+            ),
+            rx,
+        }
+    }
+}
+
+#[async_trait(?Send)]
+impl Screen for Setup {
+    fn draw(&self, data: Arc<GameData>) {
+        self.binding_types.draw(data.clone());
+    }
+
+    async fn update(&mut self, data: Arc<GameData>) {
+        self.binding_types.update(data.clone());
+        for message in self.rx.drain() {
+            self.binding_types.handle_message(&message);
+            if message.sender == self.binding_types.id {
+                if let MessageData::MenuButtonList(MenuButtonListMessage::Selected(idx)) =
+                    message.data
+                {
+                    let key_binds = match idx {
+                        0 => KeyBinds {
+                            right: KeyCode::D,
+                            left: KeyCode::A,
+                            dash: KeyCode::RightShift,
+                        },
+                        1 => KeyBinds {
+                            right: KeyCode::Right,
+                            left: KeyCode::Left,
+                            dash: KeyCode::LeftShift,
+                        },
+                        _ => todo!(),
+                    };
+                    set_value("first_time", false);
+                    set_value("binds", key_binds);
+                    data.binds.set(key_binds);
+                    data.queued_screen
+                        .lock()
+                        .unwrap()
+                        .replace(Box::new(MainMenu::new(data.clone()).await));
+                }
+            }
+        }
+    }
+}
+
 struct GameData {
     #[allow(dead_code)]
     audio: Mutex<AudioManager>,
@@ -1208,6 +1417,8 @@ struct GameData {
     queued_screen: Mutex<Option<Box<dyn Screen>>>,
     // Average of how many frames it takes without audio progressing.
     audio_frame_skip: Cell<u32>,
+
+    binds: Cell<KeyBinds>,
 }
 
 struct Game {
@@ -1230,6 +1441,14 @@ impl Game {
         let mut instance = sound.play(InstanceSettings::default().volume(0.5)).unwrap();
         instance.stop(StopInstanceSettings::new()).unwrap();
 
+        let first_time = get_value::<bool>("first_time").unwrap_or(true);
+
+        let binds = get_value::<KeyBinds>("binds").unwrap_or(KeyBinds {
+            right: KeyCode::D,
+            left: KeyCode::A,
+            dash: KeyCode::RightShift,
+        });
+
         let data = Arc::new(GameData {
             button: load_texture("resources/button.png").await.unwrap(),
             catcher: load_texture("resources/catcher.png").await.unwrap(),
@@ -1238,10 +1457,15 @@ impl Game {
             music: Mutex::new(instance),
             queued_screen: Mutex::new(None),
             audio_frame_skip: Cell::new(0),
+            binds: Cell::new(binds),
         });
 
         Game {
-            screen: Box::new(MainMenu::new(data.clone()).await),
+            screen: if first_time {
+                Box::new(Setup::new())
+            } else {
+                Box::new(MainMenu::new(data.clone()).await)
+            },
             data,
 
             prev_time: 0.,

@@ -15,3 +15,8 @@ num-format = "0.4.0"
 async-trait = "0.1.52"
 flume = "0.10.10"
 ringbuffer = "0.8.2"
+serde = "1.0.89"
+serde_json = "1.0.78"
+
+[target.wasm32-unknown-unknown.dependencies]
+web-sys = { version = "0.3.56", default-features = false, features = ['Storage'] }
