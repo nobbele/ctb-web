@@ -14,3 +14,4 @@ kira = { version = "0.5.3", default-features = false, features = ['wav'] }
 num-format = "0.4.0"
 async-trait = "0.1.52"
 flume = "0.10.10"
+ringbuffer = "0.8.2"

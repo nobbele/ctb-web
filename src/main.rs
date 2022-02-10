@@ -1,6 +1,7 @@
 #![feature(once_cell)]
 #![allow(clippy::eq_op)]
 use std::{
+    cell::Cell,
     io::Cursor,
     ops::Add,
     sync::{Arc, Mutex},
@@ -17,6 +18,7 @@ use kira::{
 };
 use macroquad::prelude::*;
 use num_format::{Locale, ToFormattedString};
+use ringbuffer::{ConstGenericRingBuffer, RingBuffer, RingBufferExt, RingBufferWrite};
 
 pub fn can_catch_fruit(catcher_hitbox: Rect, fruit_hitbox: Rect) -> bool {
     catcher_hitbox.intersect(fruit_hitbox).is_some()
@@ -144,6 +146,7 @@ impl ScoreRecorder {
             self.combo = 0;
             self.miss_count += 1;
 
+            #[allow(clippy::excessive_precision)]
             let hp_drain = polynomial(
                 self.chain_miss_count as f32,
                 &[
@@ -218,6 +221,7 @@ struct Gameplay {
     recorder: ScoreRecorder,
 
     time: f32,
+    predicted_time: f32,
     prev_time: f32,
     position: f32,
     hyper_multiplier: f32,
@@ -283,6 +287,7 @@ impl Gameplay {
         Gameplay {
             background,
             time: -time_countdown,
+            predicted_time: -time_countdown,
             prev_time: -time_countdown,
             recorder: ScoreRecorder::new(chart.fruits.len() as u32),
             position: 256.,
@@ -351,6 +356,30 @@ impl Screen for Gameplay {
         } else {
             self.prev_time = self.time;
             self.time = data.music.lock().unwrap().position() as f32;
+        }
+
+        if self.time - self.prev_time == 0. {
+            let audio_frame_skip = data.audio_frame_skip.get();
+            self.predicted_time += get_frame_time();
+            if audio_frame_skip != 0 {
+                self.predicted_time -= get_frame_time() / audio_frame_skip as f32;
+            }
+        } else {
+            // Print prediction error
+            /*let audio_frame_skip = data.audio_frame_skip.get();
+            let prediction_delta = self.time - self.predicted_time;
+            if audio_frame_skip != 0 {
+                let audio_frame_time = get_frame_time() * audio_frame_skip as f32;
+                let prediction_off = prediction_delta / audio_frame_time;
+                println!("Off by {:.2}%", prediction_off);
+            }
+            if prediction_delta < 0. {
+                println!(
+                    "Overcompensated by {}ms",
+                    (-prediction_delta * 1000.).round() as i32
+                );
+            }*/
+            self.predicted_time = self.time;
         }
 
         self.position = self
@@ -464,7 +493,8 @@ impl Screen for Gameplay {
             draw_texture_ex(
                 data.fruit,
                 self.playfield_to_screen_x(fruit.position) - self.chart.fruit_radius * self.scale(),
-                self.fruit_y(self.time, fruit.time) - self.chart.fruit_radius * self.scale(),
+                self.fruit_y(self.predicted_time, fruit.time)
+                    - self.chart.fruit_radius * self.scale(),
                 if fruit.hyper.is_some() { RED } else { WHITE },
                 DrawTextureParams {
                     dest_size: Some(vec2(
@@ -763,15 +793,13 @@ impl UiElement for MenuButton {
                     })
                     .unwrap();
             }
-        } else {
-            if self.hovered {
-                self.tx
-                    .send(Message {
-                        sender: self.id.clone(),
-                        data: MessageData::MenuButton(MenuButtonMessage::Unhovered),
-                    })
-                    .unwrap();
-            }
+        } else if self.hovered {
+            self.tx
+                .send(Message {
+                    sender: self.id.clone(),
+                    data: MessageData::MenuButton(MenuButtonMessage::Unhovered),
+                })
+                .unwrap();
         }
 
         if self.selected {
@@ -1090,12 +1118,7 @@ impl Screen for MainMenu {
                 "difficulty_list".to_string(),
                 Popout::Left,
                 Rect::new(screen_width() - 400. + 400. / 4., 0., 400., 400.),
-                self.maps[self.selected_map]
-                    .difficulties
-                    .iter()
-                    .map(|diff| diff.clone())
-                    .collect::<Vec<_>>()
-                    .as_slice(),
+                &self.maps[self.selected_map].difficulties.clone(),
                 self.tx.clone(),
             );
             self.tx
@@ -1159,7 +1182,7 @@ impl Screen for MainMenu {
         if let Some(ref list) = self.difficulty_list {
             list.draw(data.clone());
         }
-        self.start.draw(data.clone());
+        self.start.draw(data);
 
         if self.loading {
             let loading_dim = measure_text("Loading...", None, 36, 1.);
@@ -1183,11 +1206,17 @@ struct GameData {
 
     music: Mutex<InstanceHandle>,
     queued_screen: Mutex<Option<Box<dyn Screen>>>,
+    // Average of how many frames it takes without audio progressing.
+    audio_frame_skip: Cell<u32>,
 }
 
 struct Game {
     data: Arc<GameData>,
     screen: Box<dyn Screen>,
+
+    prev_time: f32,
+    audio_frame_skip_counter: u32,
+    audio_frame_skips: ConstGenericRingBuffer<u32, 4>,
 }
 
 impl Game {
@@ -1208,15 +1237,32 @@ impl Game {
             audio: Mutex::new(audio),
             music: Mutex::new(instance),
             queued_screen: Mutex::new(None),
+            audio_frame_skip: Cell::new(0),
         });
 
         Game {
             screen: Box::new(MainMenu::new(data.clone()).await),
             data,
+
+            prev_time: 0.,
+            audio_frame_skip_counter: 0,
+            audio_frame_skips: ConstGenericRingBuffer::new(),
         }
     }
 
     pub async fn update(&mut self) {
+        let time = self.data.music.lock().unwrap().position() as f32;
+        let delta = time - self.prev_time;
+        self.prev_time = time;
+        if delta == 0. {
+            self.audio_frame_skip_counter += 1;
+        } else {
+            self.audio_frame_skips.push(self.audio_frame_skip_counter);
+            self.data.audio_frame_skip.set(
+                self.audio_frame_skips.iter().sum::<u32>() / self.audio_frame_skips.len() as u32,
+            );
+            self.audio_frame_skip_counter = 0;
+        }
         self.screen.update(self.data.clone()).await;
         if let Some(queued_screen) = self.data.queued_screen.lock().unwrap().take() {
             self.screen = queued_screen;
@@ -1225,6 +1271,13 @@ impl Game {
 
     pub fn draw(&self) {
         self.screen.draw(self.data.clone());
+        /*draw_text(
+            &format!("{}", self.data.audio_frame_skip.get()),
+            screen_width() / 2.,
+            screen_height() / 2.,
+            36.,
+            RED,
+        );*/
     }
 }
 
