@@ -2,4 +2,4 @@
 /dist
 /resources/*
 !/resources/.gitkeep
-config.json
+/data

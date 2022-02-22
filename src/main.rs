@@ -1,13 +1,5 @@
 #![feature(once_cell)]
 #![allow(clippy::eq_op)]
-use std::{
-    cell::Cell,
-    collections::HashMap,
-    io::Cursor,
-    ops::Add,
-    sync::{Arc, Mutex},
-};
-
 use async_trait::async_trait;
 use kira::{
     instance::{
@@ -15,12 +7,30 @@ use kira::{
         StopInstanceSettings,
     },
     manager::{AudioManager, AudioManagerSettings},
-    sound::{Sound, SoundSettings},
+    sound::{handle::SoundHandle, Sound, SoundSettings},
 };
 use macroquad::prelude::*;
 use num_format::{Locale, ToFormattedString};
+use parking_lot::Mutex;
 use ringbuffer::{ConstGenericRingBuffer, RingBuffer, RingBufferExt, RingBufferWrite};
 use serde::ser::SerializeMap;
+use slotmap::SlotMap;
+use std::{
+    any::Any,
+    cell::Cell,
+    collections::HashMap,
+    future::Future,
+    io::{Cursor, Read},
+    marker::PhantomData,
+    ops::Add,
+    path::PathBuf,
+    pin::Pin,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    thread::JoinHandle,
+};
 
 pub fn set_value<T: serde::Serialize>(key: &str, value: T) {
     let value = serde_json::to_value(value).unwrap();
@@ -31,24 +41,26 @@ pub fn set_value<T: serde::Serialize>(key: &str, value: T) {
     }
     #[cfg(not(target_family = "wasm"))]
     {
-        let mut config: HashMap<String, serde_json::Value> =
-            match std::fs::OpenOptions::new().read(true).open("config.json") {
-                Ok(file) => serde_json::from_reader(file).unwrap(),
-                Err(e) => {
-                    if e.kind() == std::io::ErrorKind::NotFound {
-                        HashMap::new()
-                    } else {
-                        panic!("{:?}", e)
-                    }
+        let mut config: HashMap<String, serde_json::Value> = match std::fs::OpenOptions::new()
+            .read(true)
+            .open("data/config.json")
+        {
+            Ok(file) => serde_json::from_reader(file).unwrap(),
+            Err(e) => {
+                if e.kind() == std::io::ErrorKind::NotFound {
+                    HashMap::new()
+                } else {
+                    panic!("{:?}", e)
                 }
-            };
+            }
+        };
 
         config.insert(key.to_string(), value);
         let file = std::fs::OpenOptions::new()
             .write(true)
             .create(true)
             .truncate(true)
-            .open("config.json")
+            .open("data/config.json")
             .unwrap();
         serde_json::to_writer(file, &config).unwrap();
     }
@@ -63,7 +75,10 @@ pub fn get_value<T: serde::de::DeserializeOwned>(key: &str) -> Option<T> {
     }
     #[cfg(not(target_family = "wasm"))]
     {
-        let document = match std::fs::OpenOptions::new().read(true).open("config.json") {
+        let document = match std::fs::OpenOptions::new()
+            .read(true)
+            .open("data/config.json")
+        {
             Ok(file) => serde_json::from_reader(file).unwrap(),
             Err(e) => {
                 if e.kind() == std::io::ErrorKind::NotFound {
@@ -74,6 +89,283 @@ pub fn get_value<T: serde::de::DeserializeOwned>(key: &str) -> Option<T> {
             }
         };
         serde_json::from_value(document.get(key)?.clone()).ok()
+    }
+}
+
+#[allow(dead_code)]
+fn cache_to_file<R: Read>(key: &str, get: impl Fn() -> R) -> impl Read {
+    let path: PathBuf = format!("data/cache/{}", key).into();
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    if std::fs::metadata(&path).is_ok() {
+        println!("Reading '{}' from cache", key);
+        std::fs::OpenOptions::new().read(true).open(path).unwrap()
+    } else {
+        println!("Caching '{}'", key);
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+            .unwrap();
+        let mut reader = get();
+        std::io::copy(&mut reader, &mut file).unwrap();
+        std::fs::OpenOptions::new().read(true).open(path).unwrap()
+    }
+}
+
+struct Cache<T> {
+    #[allow(dead_code)]
+    base_path: PathBuf,
+    cache: parking_lot::Mutex<HashMap<String, Arc<T>>>,
+}
+
+impl<T> Cache<T> {
+    pub fn new(base_path: impl Into<PathBuf>) -> Self {
+        Cache {
+            base_path: base_path.into(),
+            cache: parking_lot::Mutex::new(HashMap::new()),
+        }
+    }
+    pub async fn get<'a, F: Future<Output = T>>(
+        &'a self,
+        key: &str,
+        get: impl FnOnce() -> F,
+    ) -> Arc<T> {
+        match self.cache.lock().entry(key.to_owned()) {
+            std::collections::hash_map::Entry::Occupied(o) => o.get().clone(),
+            std::collections::hash_map::Entry::Vacant(e) => e.insert(Arc::new(get().await)).clone(),
+        }
+    }
+}
+
+struct WaitForBlockingFuture<T, F> {
+    done: Arc<AtomicBool>,
+    f: Option<F>,
+    thread: Option<JoinHandle<T>>,
+}
+
+impl<T, F> WaitForBlockingFuture<T, F>
+where
+    T: Send + 'static,
+    F: FnOnce() -> T + Send + 'static,
+{
+    pub fn new(f: F) -> Self {
+        WaitForBlockingFuture {
+            done: Arc::new(AtomicBool::new(false)),
+            f: Some(f),
+            thread: None,
+        }
+    }
+}
+
+impl<T, F> Future for WaitForBlockingFuture<T, F>
+where
+    T: Send + 'static,
+    F: FnOnce() -> T + Send + 'static,
+{
+    type Output = T;
+
+    fn poll(
+        mut self: Pin<&mut Self>,
+        _cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Self::Output> {
+        if self.thread.is_some() {
+            if self.done.load(Ordering::Relaxed) {
+                std::task::Poll::Ready(self.thread.take().unwrap().join().unwrap())
+            } else {
+                std::task::Poll::Pending
+            }
+        } else {
+            let f = self.f.take().unwrap();
+            let done = self.done.clone();
+            self.thread = Some(std::thread::spawn(move || {
+                let v = f();
+                done.store(true, Ordering::Relaxed);
+                v
+            }));
+            std::task::Poll::Pending
+        }
+    }
+}
+
+impl<T, F> Unpin for WaitForBlockingFuture<T, F> {}
+
+impl Cache<SoundHandle> {
+    pub async fn get_sound(&self, audio: &mut AudioManager, path: &str) -> SoundHandle {
+        (*self
+            .get(path, || async {
+                let sound_data = load_file(path).await.unwrap();
+                let sound = WaitForBlockingFuture::new(|| {
+                    Sound::from_wav_reader(Cursor::new(sound_data), SoundSettings::default())
+                        .unwrap()
+                })
+                .await;
+                audio.add_sound(sound).unwrap()
+            })
+            .await)
+            .clone()
+    }
+}
+
+impl Cache<Texture2D> {
+    pub async fn get_texture(&self, path: &str) -> Texture2D {
+        *self
+            .get(path, || async { load_texture(path).await.unwrap() })
+            .await
+    }
+}
+
+fn null_waker() -> std::task::Waker {
+    let w = ();
+    fn _nothing1(_: *const ()) -> std::task::RawWaker {
+        panic!()
+    }
+    fn _nothing2(_: *const ()) {
+        panic!()
+    }
+    fn _nothing3(_: *const ()) {
+        panic!()
+    }
+    fn _nothing4(_: *const ()) {}
+    unsafe {
+        std::task::Waker::from_raw(std::task::RawWaker::new(
+            &w as *const (),
+            &std::task::RawWakerVTable::new(_nothing1, _nothing2, _nothing3, _nothing4),
+        ))
+    }
+}
+
+type Fut = dyn Future<Output = Box<dyn Any>>;
+enum FutureOrValue {
+    Future(Pin<Box<Fut>>),
+    Value(Box<dyn Any>),
+}
+
+struct PromiseExecutor {
+    promises: SlotMap<slotmap::DefaultKey, FutureOrValue>,
+}
+
+impl PromiseExecutor {
+    pub fn new() -> Self {
+        PromiseExecutor {
+            promises: SlotMap::new(),
+        }
+    }
+
+    pub fn spawn<T: Send + 'static, F>(&mut self, fut: impl FnOnce() -> F + 'static) -> Promise<T>
+    where
+        F: Future<Output = T> + 'static,
+    {
+        let key = self.promises.insert(FutureOrValue::Future(Box::pin(async {
+            Box::new(fut().await) as Box<dyn Any>
+        })));
+        Promise {
+            cancelled_or_finished: Cell::new(true),
+            id: key,
+            _phantom: PhantomData,
+        }
+    }
+
+    pub fn try_get<T: 'static>(&mut self, promise: &Promise<T>) -> Option<T> {
+        match &self.promises[promise.id] {
+            FutureOrValue::Future(_) => None,
+            FutureOrValue::Value(_) => {
+                promise.cancelled_or_finished.set(true);
+                match self.promises.remove(promise.id).unwrap() {
+                    FutureOrValue::Future(_) => unreachable!(),
+                    FutureOrValue::Value(v) => Some(*v.downcast().unwrap()),
+                }
+            }
+        }
+    }
+
+    pub fn poll(&mut self) {
+        let keys = self.promises.keys().collect::<Vec<_>>();
+        for key in keys {
+            let promise = &mut self.promises[key];
+            match promise {
+                FutureOrValue::Future(f) => {
+                    let waker = null_waker();
+                    let mut cx = std::task::Context::from_waker(&waker);
+                    match std::future::Future::poll(f.as_mut(), &mut cx) {
+                        std::task::Poll::Ready(v) => {
+                            self.promises[key] = FutureOrValue::Value(v);
+                        }
+                        std::task::Poll::Pending => {}
+                    }
+                }
+                FutureOrValue::Value(_) => {}
+            }
+        }
+    }
+
+    pub fn cancel<T>(&mut self, promise: &Promise<T>) {
+        promise.cancelled_or_finished.set(true);
+        self.promises.remove(promise.id);
+    }
+}
+
+struct Promise<T> {
+    cancelled_or_finished: Cell<bool>,
+    id: slotmap::DefaultKey,
+    _phantom: PhantomData<T>,
+}
+
+impl<T> Drop for Promise<T> {
+    fn drop(&mut self) {
+        if !self.cancelled_or_finished.get() {
+            panic!("Promise droppped without being cancelled or completed!");
+        }
+    }
+}
+
+#[test]
+fn test_promise() {
+    let mut exec = PromiseExecutor::new();
+    let promise = exec.spawn(|| async { std::future::ready(5).await });
+    assert_eq!(exec.try_get(&promise), None);
+    exec.poll();
+    assert_eq!(exec.try_get(&promise), Some(5));
+
+    struct ExampleFuture {
+        done: Arc<std::sync::atomic::AtomicBool>,
+    }
+
+    impl ExampleFuture {
+        fn new() -> Self {
+            let done = Arc::new(std::sync::atomic::AtomicBool::new(false));
+            let done_clone = done.clone();
+            let _ = std::thread::spawn(move || {
+                std::thread::sleep(std::time::Duration::from_millis(50));
+                done_clone.store(true, std::sync::atomic::Ordering::Relaxed);
+            });
+            ExampleFuture { done }
+        }
+    }
+
+    impl Future for ExampleFuture {
+        type Output = ();
+
+        fn poll(
+            self: Pin<&mut Self>,
+            _cx: &mut std::task::Context<'_>,
+        ) -> std::task::Poll<Self::Output> {
+            if self.done.load(std::sync::atomic::Ordering::Relaxed) {
+                std::task::Poll::Ready(())
+            } else {
+                std::task::Poll::Pending
+            }
+        }
+    }
+
+    let promise = exec.spawn(|| async { ExampleFuture::new().await });
+
+    loop {
+        exec.poll();
+
+        if let Some(_) = exec.try_get(&promise) {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(5));
     }
 }
 
@@ -251,7 +543,7 @@ fn test_hp() {
     }
     assert_eq!(recorder.hp, 1.0);
     recorder.register_judgement(false);
-    assert_eq!(recorder.hp, 0.9874626);
+    assert_eq!(recorder.hp, 0.9749252);
     for _ in 0..10 {
         recorder.register_judgement(true);
     }
@@ -259,12 +551,12 @@ fn test_hp() {
     for _ in 0..3 {
         recorder.register_judgement(false);
     }
-    assert_eq!(recorder.hp, 0.91811043);
+    assert_eq!(recorder.hp, 0.8362208);
     recorder.register_judgement(true);
     for _ in 0..6 {
         recorder.register_judgement(false);
     }
-    assert_eq!(recorder.hp, 0.612908);
+    assert_eq!(recorder.hp, 0.22481588);
     recorder.register_judgement(true);
     for _ in 0..12 {
         recorder.register_judgement(false);
@@ -273,8 +565,6 @@ fn test_hp() {
 }
 
 struct Gameplay {
-    background: Texture2D,
-
     recorder: ScoreRecorder,
 
     time: f32,
@@ -310,25 +600,23 @@ impl Gameplay {
                 .unwrap();
         let chart = Chart::from_beatmap(&beatmap);
 
-        let background = load_texture(&format!("resources/{}/bg.png", map))
-            .await
-            .unwrap();
+        let mut sound = data
+            .audio_cache
+            .get_sound(
+                &mut *data.audio.lock(),
+                &format!("resources/{}/audio.wav", map),
+            )
+            .await;
 
-        let song = load_file(&format!("resources/{}/audio.wav", map))
-            .await
-            .unwrap();
-        let sound_data =
-            Sound::from_wav_reader(Cursor::new(song), SoundSettings::default()).unwrap();
-        let mut sound = data.audio.lock().unwrap().add_sound(sound_data).unwrap();
-        data.music
+        data.state
             .lock()
-            .unwrap()
+            .music
             .stop(StopInstanceSettings::new())
             .unwrap();
-        *data.music.lock().unwrap() = sound.play(InstanceSettings::default().volume(0.5)).unwrap();
-        data.music
+        data.state.lock().music = sound.play(InstanceSettings::default().volume(0.5)).unwrap();
+        data.state
             .lock()
-            .unwrap()
+            .music
             .pause(PauseInstanceSettings::new())
             .unwrap();
 
@@ -342,7 +630,6 @@ impl Gameplay {
         next_frame().await;
 
         Gameplay {
-            background,
             time: -time_countdown,
             predicted_time: -time_countdown,
             prev_time: -time_countdown,
@@ -352,7 +639,7 @@ impl Gameplay {
             deref_delete: Vec::new(),
             queued_fruits: (0..chart.fruits.len()).collect(),
             chart,
-            show_debug_hitbox: cfg!(debug_assertions),
+            show_debug_hitbox: false,
             time_countdown,
             started: false,
         }
@@ -395,7 +682,7 @@ impl Gameplay {
 #[async_trait(?Send)]
 impl Screen for Gameplay {
     async fn update(&mut self, data: Arc<GameData>) {
-        let binds = data.binds.get();
+        let binds = data.state.lock().binds;
         let catcher_y = self.catcher_y();
 
         if !self.started {
@@ -404,20 +691,20 @@ impl Screen for Gameplay {
             if self.time_countdown > 0. {
                 self.time_countdown -= get_frame_time();
             } else {
-                data.music
+                data.state
                     .lock()
-                    .unwrap()
+                    .music
                     .resume(ResumeInstanceSettings::new())
                     .unwrap();
                 self.started = true;
             }
         } else {
             self.prev_time = self.time;
-            self.time = data.music.lock().unwrap().position() as f32;
+            self.time = data.state.lock().music.position() as f32;
         }
 
         if self.time - self.prev_time == 0. {
-            let audio_frame_skip = data.audio_frame_skip.get();
+            let audio_frame_skip = data.state.lock().audio_frame_skip;
             self.predicted_time += get_frame_time();
             if audio_frame_skip != 0 {
                 self.predicted_time -= get_frame_time() / audio_frame_skip as f32;
@@ -489,7 +776,7 @@ impl Screen for Gameplay {
         }
 
         if self.recorder.hp == 0. || self.queued_fruits.is_empty() {
-            *data.queued_screen.lock().unwrap() = Some(Box::new(ResultScreen {
+            data.state.lock().queued_screen = Some(Box::new(ResultScreen {
                 title: "TODO".to_string(),
                 difficulty: "TODO".to_string(),
                 score: self.recorder.score,
@@ -504,26 +791,28 @@ impl Screen for Gameplay {
             self.show_debug_hitbox = !self.show_debug_hitbox;
         }
         if is_key_pressed(KeyCode::Escape) {
-            data.music
+            data.state
                 .lock()
-                .unwrap()
+                .music
                 .stop(StopInstanceSettings::new())
                 .unwrap();
-            *data.queued_screen.lock().unwrap() = Some(Box::new(MainMenu::new(data.clone()).await));
+            data.state.lock().queued_screen = Some(Box::new(MainMenu::new(data.clone())));
         }
     }
 
     fn draw(&self, data: Arc<GameData>) {
-        draw_texture_ex(
-            self.background,
-            0.,
-            0.,
-            Color::new(1., 1., 1., 0.2),
-            DrawTextureParams {
-                dest_size: Some(vec2(screen_width(), screen_height())),
-                ..Default::default()
-            },
-        );
+        if let Some(background) = data.state.lock().background {
+            draw_texture_ex(
+                background,
+                0.,
+                0.,
+                Color::new(1., 1., 1., 0.2),
+                DrawTextureParams {
+                    dest_size: Some(vec2(screen_width(), screen_height())),
+                    ..Default::default()
+                },
+            );
+        }
         draw_line(
             self.playfield_to_screen_x(0.) + 2. / 2.,
             0.,
@@ -715,8 +1004,8 @@ impl Screen for ResultScreen {
     }
 
     async fn update(&mut self, data: Arc<GameData>) {
-        if is_key_pressed(KeyCode::Backspace) {
-            *data.queued_screen.lock().unwrap() = Some(Box::new(MainMenu::new(data.clone()).await));
+        if is_key_pressed(KeyCode::Escape) {
+            data.state.lock().queued_screen = Some(Box::new(MainMenu::new(data.clone())));
         }
     }
 }
@@ -976,26 +1265,6 @@ impl UiElement for MenuButtonList {
         for button in &mut self.buttons {
             button.update(data.clone());
         }
-
-        if is_key_pressed(KeyCode::Down) {
-            self.tx
-                .send(Message {
-                    sender: self.id.clone(),
-                    data: MessageData::MenuButtonList(MenuButtonListMessage::Click(
-                        (self.selected + 1) % self.buttons.len(),
-                    )),
-                })
-                .unwrap();
-        } else if is_key_pressed(KeyCode::Up) {
-            self.tx
-                .send(Message {
-                    sender: self.id.clone(),
-                    data: MessageData::MenuButtonList(MenuButtonListMessage::Click(
-                        (self.selected + self.buttons.len() - 1) % self.buttons.len(),
-                    )),
-                })
-                .unwrap();
-        }
     }
 
     fn handle_message(&mut self, message: &Message) {
@@ -1094,11 +1363,11 @@ struct MainMenu {
     difficulty_list: Option<MenuButtonList>,
 
     start: MenuButton,
-    loading: bool,
+    loading_promise: Option<Promise<(SoundHandle, Texture2D)>>,
 }
 
 impl MainMenu {
-    pub async fn new(_data: Arc<GameData>) -> Self {
+    pub fn new(_data: Arc<GameData>) -> Self {
         let (tx, rx) = flume::unbounded();
         let maps = vec![
             MapListing {
@@ -1136,6 +1405,7 @@ impl MainMenu {
             data: MessageData::MenuButtonList(MenuButtonListMessage::Click(0)),
         })
         .unwrap();
+
         MainMenu {
             prev_selected_map: usize::MAX,
             selected_map: usize::MAX,
@@ -1158,7 +1428,7 @@ impl MainMenu {
                 ),
                 tx,
             ),
-            loading: false,
+            loading_promise: None,
         }
     }
 }
@@ -1167,49 +1437,119 @@ impl MainMenu {
 impl Screen for MainMenu {
     async fn update(&mut self, data: Arc<GameData>) {
         if self.selected_map != self.prev_selected_map {
-            let song = load_file(&format!(
-                "resources/{}/audio.wav",
-                self.maps[self.selected_map].title
-            ))
-            .await
-            .unwrap();
-            let sound_data =
-                Sound::from_wav_reader(Cursor::new(song), SoundSettings::default()).unwrap();
-            let mut sound = data.audio.lock().unwrap().add_sound(sound_data).unwrap();
-            data.music
-                .lock()
-                .unwrap()
-                .stop(StopInstanceSettings::new())
-                .unwrap();
-            *data.music.lock().unwrap() =
-                sound.play(InstanceSettings::default().volume(0.5)).unwrap();
-
-            let difficulty_list = MenuButtonList::new(
-                "difficulty_list".to_string(),
-                Popout::Left,
-                Rect::new(screen_width() - 400. + 400. / 4., 0., 400., 400.),
-                &self.maps[self.selected_map]
-                    .difficulties
-                    .iter()
-                    .map(|s| s.as_str())
-                    .collect::<Vec<_>>(),
-                self.tx.clone(),
-            );
-            self.tx
-                .send(Message {
-                    sender: difficulty_list.id.clone(),
-                    data: MessageData::MenuButtonList(MenuButtonListMessage::Click(0)),
-                })
-                .unwrap();
-            self.difficulty_list = Some(difficulty_list);
+            let data_clone = data.clone();
+            let map_title = self.maps[self.selected_map].title.clone();
+            if let Some(loading_promise) = &self.loading_promise {
+                data.exec.lock().cancel(loading_promise);
+            }
+            self.loading_promise = Some(data.exec.lock().spawn(move || async move {
+                let sound = data_clone
+                    .audio_cache
+                    .get_sound(
+                        &mut data_clone.audio.lock(),
+                        &format!("resources/{}/audio.wav", map_title),
+                    )
+                    .await;
+                let background = data_clone
+                    .image_cache
+                    .get_texture(&format!("resources/{}/bg.png", map_title))
+                    .await;
+                (sound, background)
+            }));
 
             self.prev_selected_map = self.selected_map;
-
-            self.loading = false;
         }
+
+        if let Some(loading_promise) = &self.loading_promise {
+            if let Some((mut sound, background)) = data.exec.lock().try_get(loading_promise) {
+                data.state
+                    .lock()
+                    .music
+                    .stop(StopInstanceSettings::new())
+                    .unwrap();
+                data.state.lock().background = Some(background);
+                data.state.lock().music =
+                    sound.play(InstanceSettings::default().volume(0.5)).unwrap();
+
+                let difficulty_list = MenuButtonList::new(
+                    "difficulty_list".to_string(),
+                    Popout::Left,
+                    Rect::new(screen_width() - 400. + 400. / 4., 0., 400., 400.),
+                    &self.maps[self.selected_map]
+                        .difficulties
+                        .iter()
+                        .map(|s| s.as_str())
+                        .collect::<Vec<_>>(),
+                    self.tx.clone(),
+                );
+                self.tx
+                    .send(Message {
+                        sender: difficulty_list.id.clone(),
+                        data: MessageData::MenuButtonList(MenuButtonListMessage::Click(0)),
+                    })
+                    .unwrap();
+                self.difficulty_list = Some(difficulty_list);
+
+                self.loading_promise = None;
+            }
+        }
+
+        if let Some(difficulty_list) = &self.difficulty_list {
+            if is_key_pressed(KeyCode::Down) {
+                self.tx
+                    .send(Message {
+                        sender: difficulty_list.id.clone(),
+                        data: MessageData::MenuButtonList(MenuButtonListMessage::Click(
+                            (difficulty_list.selected + 1) % difficulty_list.buttons.len(),
+                        )),
+                    })
+                    .unwrap();
+            } else if is_key_pressed(KeyCode::Up) {
+                self.tx
+                    .send(Message {
+                        sender: difficulty_list.id.clone(),
+                        data: MessageData::MenuButtonList(MenuButtonListMessage::Click(
+                            (difficulty_list.selected + difficulty_list.buttons.len() - 1)
+                                % difficulty_list.buttons.len(),
+                        )),
+                    })
+                    .unwrap();
+            }
+        }
+
+        if is_key_pressed(KeyCode::Right) {
+            self.tx
+                .send(Message {
+                    sender: self.map_list.id.clone(),
+                    data: MessageData::MenuButtonList(MenuButtonListMessage::Click(
+                        (self.map_list.selected + 1) % self.map_list.buttons.len(),
+                    )),
+                })
+                .unwrap();
+        } else if is_key_pressed(KeyCode::Left) {
+            self.tx
+                .send(Message {
+                    sender: self.map_list.id.clone(),
+                    data: MessageData::MenuButtonList(MenuButtonListMessage::Click(
+                        (self.map_list.selected + self.map_list.buttons.len() - 1)
+                            % self.map_list.buttons.len(),
+                    )),
+                })
+                .unwrap();
+        }
+
+        if is_key_pressed(KeyCode::Enter) {
+            self.tx
+                .send(Message {
+                    sender: self.start.id.clone(),
+                    data: MessageData::MenuButton(MenuButtonMessage::Selected),
+                })
+                .unwrap();
+        }
+
         for message in self.rx.drain() {
             self.map_list.handle_message(&message);
-            if let Some(ref mut difficulty_list) = self.difficulty_list {
+            if let Some(difficulty_list) = &mut self.difficulty_list {
                 difficulty_list.handle_message(&message);
             }
             self.start.handle_message(&message);
@@ -1218,7 +1558,6 @@ impl Screen for MainMenu {
                     message.data
                 {
                     self.selected_map = idx;
-                    self.loading = true;
                 }
             }
             if let Some(ref mut difficulty_list) = self.difficulty_list {
@@ -1233,7 +1572,7 @@ impl Screen for MainMenu {
             if message.sender == self.start.id {
                 if let MessageData::MenuButton(MenuButtonMessage::Selected) = message.data {
                     let map = &self.maps[self.selected_map];
-                    *data.queued_screen.lock().unwrap() = Some(Box::new(
+                    data.state.lock().queued_screen = Some(Box::new(
                         Gameplay::new(
                             data.clone(),
                             &map.title,
@@ -1252,13 +1591,25 @@ impl Screen for MainMenu {
     }
 
     fn draw(&self, data: Arc<GameData>) {
+        if let Some(background) = data.state.lock().background {
+            draw_texture_ex(
+                background,
+                0.,
+                0.,
+                Color::new(1., 1., 1., 0.6),
+                DrawTextureParams {
+                    dest_size: Some(vec2(screen_width(), screen_height())),
+                    ..Default::default()
+                },
+            );
+        }
         self.map_list.draw(data.clone());
         if let Some(ref list) = self.difficulty_list {
             list.draw(data.clone());
         }
         self.start.draw(data);
 
-        if self.loading {
+        if self.loading_promise.is_some() {
             let loading_dim = measure_text("Loading...", None, 36, 1.);
             draw_text(
                 "Loading...",
@@ -1332,7 +1683,7 @@ impl<'de> serde::Deserialize<'de> for KeyBinds {
     where
         D: serde::Deserializer<'de>,
     {
-        Ok(deserializer.deserialize_map(KeyBindVisitor)?)
+        deserializer.deserialize_map(KeyBindVisitor)
     }
 }
 
@@ -1369,7 +1720,7 @@ impl Setup {
 #[async_trait(?Send)]
 impl Screen for Setup {
     fn draw(&self, data: Arc<GameData>) {
-        self.binding_types.draw(data.clone());
+        self.binding_types.draw(data);
     }
 
     async fn update(&mut self, data: Arc<GameData>) {
@@ -1395,30 +1746,36 @@ impl Screen for Setup {
                     };
                     set_value("first_time", false);
                     set_value("binds", key_binds);
-                    data.binds.set(key_binds);
-                    data.queued_screen
+                    data.state.lock().binds = key_binds;
+                    data.state
                         .lock()
-                        .unwrap()
-                        .replace(Box::new(MainMenu::new(data.clone()).await));
+                        .queued_screen
+                        .replace(Box::new(MainMenu::new(data.clone())));
                 }
             }
         }
     }
 }
 
+struct GameState {
+    music: InstanceHandle,
+    background: Option<Texture2D>,
+    queued_screen: Option<Box<dyn Screen>>,
+    audio_frame_skip: u32,
+    binds: KeyBinds,
+}
+
 struct GameData {
-    #[allow(dead_code)]
     audio: Mutex<AudioManager>,
     catcher: Texture2D,
     fruit: Texture2D,
     button: Texture2D,
 
-    music: Mutex<InstanceHandle>,
-    queued_screen: Mutex<Option<Box<dyn Screen>>>,
-    // Average of how many frames it takes without audio progressing.
-    audio_frame_skip: Cell<u32>,
+    audio_cache: Cache<SoundHandle>,
+    image_cache: Cache<Texture2D>,
 
-    binds: Cell<KeyBinds>,
+    state: Mutex<GameState>,
+    exec: Arc<Mutex<PromiseExecutor>>,
 }
 
 struct Game {
@@ -1431,13 +1788,16 @@ struct Game {
 }
 
 impl Game {
-    pub async fn new() -> Self {
+    pub async fn new(exec: Arc<Mutex<PromiseExecutor>>) -> Self {
         let mut audio = AudioManager::new(AudioManagerSettings::default()).unwrap();
 
-        let song = load_file("resources/Kizuato/audio.wav").await.unwrap();
-        let sound_data =
-            Sound::from_wav_reader(Cursor::new(song), SoundSettings::default()).unwrap();
-        let mut sound = audio.add_sound(sound_data).unwrap();
+        let audio_cache = Cache::new("data/cache/audio");
+        let image_cache = Cache::new("data/cache/image");
+
+        let mut sound = audio_cache
+            .get_sound(&mut audio, "resources/Kizuato/audio.wav")
+            .await;
+
         let mut instance = sound.play(InstanceSettings::default().volume(0.5)).unwrap();
         instance.stop(StopInstanceSettings::new()).unwrap();
 
@@ -1450,21 +1810,27 @@ impl Game {
         });
 
         let data = Arc::new(GameData {
+            audio_cache,
+            image_cache,
             button: load_texture("resources/button.png").await.unwrap(),
             catcher: load_texture("resources/catcher.png").await.unwrap(),
             fruit: load_texture("resources/fruit.png").await.unwrap(),
             audio: Mutex::new(audio),
-            music: Mutex::new(instance),
-            queued_screen: Mutex::new(None),
-            audio_frame_skip: Cell::new(0),
-            binds: Cell::new(binds),
+            state: Mutex::new(GameState {
+                background: None,
+                music: instance,
+                queued_screen: None,
+                audio_frame_skip: 0,
+                binds,
+            }),
+            exec,
         });
 
         Game {
             screen: if first_time {
                 Box::new(Setup::new())
             } else {
-                Box::new(MainMenu::new(data.clone()).await)
+                Box::new(MainMenu::new(data.clone()))
             },
             data,
 
@@ -1475,40 +1841,34 @@ impl Game {
     }
 
     pub async fn update(&mut self) {
-        let time = self.data.music.lock().unwrap().position() as f32;
+        let time = self.data.state.lock().music.position() as f32;
         let delta = time - self.prev_time;
         self.prev_time = time;
         if delta == 0. {
             self.audio_frame_skip_counter += 1;
         } else {
             self.audio_frame_skips.push(self.audio_frame_skip_counter);
-            self.data.audio_frame_skip.set(
-                self.audio_frame_skips.iter().sum::<u32>() / self.audio_frame_skips.len() as u32,
-            );
+            self.data.state.lock().audio_frame_skip =
+                self.audio_frame_skips.iter().sum::<u32>() / self.audio_frame_skips.len() as u32;
             self.audio_frame_skip_counter = 0;
         }
         self.screen.update(self.data.clone()).await;
-        if let Some(queued_screen) = self.data.queued_screen.lock().unwrap().take() {
+        if let Some(queued_screen) = self.data.state.lock().queued_screen.take() {
             self.screen = queued_screen;
         }
     }
 
     pub fn draw(&self) {
         self.screen.draw(self.data.clone());
-        /*draw_text(
-            &format!("{}", self.data.audio_frame_skip.get()),
-            screen_width() / 2.,
-            screen_height() / 2.,
-            36.,
-            RED,
-        );*/
     }
 }
 
 #[macroquad::main(window_conf)]
 async fn main() {
-    let mut game = Game::new().await;
+    let exec = Arc::new(Mutex::new(PromiseExecutor::new()));
+    let mut game = Game::new(exec.clone()).await;
     loop {
+        exec.lock().poll();
         game.update().await;
 
         clear_background(BLACK);
