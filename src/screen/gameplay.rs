@@ -40,8 +40,8 @@ pub struct Gameplay {
 }
 
 impl Gameplay {
-    pub async fn new(data: Arc<GameData>, map: &str, diff: &str) -> Self {
-        let beatmap_data = load_file(&format!("resources/{}/{}.osu", map, diff))
+    pub async fn new(data: Arc<GameData>, chart_name: &str, diff: &str) -> Self {
+        let beatmap_data = load_file(&format!("resources/{}/{}.osu", chart_name, diff))
             .await
             .unwrap();
         let beatmap_content = std::str::from_utf8(&beatmap_data).unwrap();
@@ -54,7 +54,7 @@ impl Gameplay {
             .audio_cache
             .get_sound(
                 &mut *data.audio.lock(),
-                &format!("resources/{}/audio.wav", map),
+                &format!("resources/{}/audio.wav", chart_name),
             )
             .await;
 

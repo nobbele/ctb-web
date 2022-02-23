@@ -17,22 +17,22 @@ use kira::{
 use macroquad::prelude::*;
 use std::sync::Arc;
 
-struct MapListing {
+struct ChartListing {
     title: String,
     difficulties: Vec<String>,
 }
 
 pub struct SelectScreen {
-    maps: Vec<MapListing>,
-    prev_selected_map: usize,
-    selected_map: usize,
+    charts: Vec<ChartListing>,
+    prev_selected_chart: usize,
+    selected_chart: usize,
     selected_difficulty: usize,
 
     scroll_vel: f32,
 
     rx: flume::Receiver<Message>,
     tx: flume::Sender<Message>,
-    map_list: MenuButtonList,
+    chart_list: MenuButtonList,
 
     start: MenuButton,
     loading_promise: Option<Promise<(SoundHandle, Texture2D)>>,
@@ -41,16 +41,16 @@ pub struct SelectScreen {
 impl SelectScreen {
     pub fn new(data: Arc<GameData>) -> Self {
         let (tx, rx) = flume::unbounded();
-        let maps = vec![
-            MapListing {
+        let charts = vec![
+            ChartListing {
                 title: "Kizuato".to_string(),
                 difficulties: vec!["Platter".to_string(), "Ascendance's Rain".to_string()],
             },
-            MapListing {
+            ChartListing {
                 title: "Padoru".to_string(),
                 difficulties: vec!["Salad".to_string(), "Platter".to_string()],
             },
-            MapListing {
+            ChartListing {
                 title: "Troublemaker".to_string(),
                 difficulties: vec![
                     "Cup".to_string(),
@@ -62,13 +62,14 @@ impl SelectScreen {
                 ],
             },
         ];
-        let maps_raw = maps
+        let charts_raw = charts
             .iter()
-            .map(|map| {
+            .map(|chart| {
                 (
-                    map.title.as_str(),
+                    chart.title.as_str(),
                     Some(
-                        map.difficulties
+                        chart
+                            .difficulties
                             .iter()
                             .map(|diff| diff.as_str())
                             .collect::<Vec<_>>(),
@@ -76,19 +77,19 @@ impl SelectScreen {
                 )
             })
             .collect::<Vec<_>>();
-        let map_list = MenuButtonList::new(
+        let chart_list = MenuButtonList::new(
             "button_list".to_string(),
             Popout::Left,
             Rect::new(screen_width() - 400., 0., 400., 400.),
-            maps_raw
+            charts_raw
                 .iter()
-                .map(|map| (map.0, map.1.as_ref().map(|diff| diff.as_slice())))
+                .map(|chart| (chart.0, chart.1.as_ref().map(|diff| diff.as_slice())))
                 .collect::<Vec<_>>()
                 .as_slice(),
             tx.clone(),
         );
         tx.send(Message {
-            target: map_list.id.clone(),
+            target: chart_list.id.clone(),
             data: MessageData::MenuButtonList(MenuButtonListMessage::Click(0)),
         })
         .unwrap();
@@ -101,16 +102,16 @@ impl SelectScreen {
         }
 
         SelectScreen {
-            prev_selected_map: usize::MAX,
-            selected_map: usize::MAX,
+            prev_selected_chart: usize::MAX,
+            selected_chart: usize::MAX,
             selected_difficulty: 0,
 
             scroll_vel: 0.,
 
-            maps,
+            charts,
             rx,
             tx: tx.clone(),
-            map_list,
+            chart_list,
             start: MenuButton::new(
                 "start".to_string(),
                 "Start".to_string(),
@@ -131,9 +132,9 @@ impl SelectScreen {
 #[async_trait(?Send)]
 impl Screen for SelectScreen {
     async fn update(&mut self, data: Arc<GameData>) {
-        if self.selected_map != self.prev_selected_map {
+        if self.selected_chart != self.prev_selected_chart {
             let data_clone = data.clone();
-            let map_title = self.maps[self.selected_map].title.clone();
+            let chart_title = self.charts[self.selected_chart].title.clone();
             if let Some(loading_promise) = &self.loading_promise {
                 data.exec.lock().cancel(loading_promise);
             }
@@ -142,17 +143,17 @@ impl Screen for SelectScreen {
                     .audio_cache
                     .get_sound(
                         &mut data_clone.audio.lock(),
-                        &format!("resources/{}/audio.wav", map_title),
+                        &format!("resources/{}/audio.wav", chart_title),
                     )
                     .await;
                 let background = data_clone
                     .image_cache
-                    .get_texture(&format!("resources/{}/bg.png", map_title))
+                    .get_texture(&format!("resources/{}/bg.png", chart_title))
                     .await;
                 (sound, background)
             }));
 
-            self.prev_selected_map = self.selected_map;
+            self.prev_selected_chart = self.selected_chart;
         }
 
         if let Some(loading_promise) = &self.loading_promise {
@@ -199,10 +200,10 @@ impl Screen for SelectScreen {
             self.scroll_vel = self.scroll_vel.clamp(-18., 18.);
         }
         if self.scroll_vel != 0. {
-            let mut bounds = self.map_list.bounds();
+            let mut bounds = self.chart_list.bounds();
             bounds.y += self.scroll_vel;
             bounds.y = bounds.y.clamp(-(bounds.h - screen_height()).max(0.), 0.);
-            self.map_list.set_bounds(bounds);
+            self.chart_list.set_bounds(bounds);
 
             self.scroll_vel -= self.scroll_vel * get_frame_time() * 5.;
         }
@@ -210,19 +211,19 @@ impl Screen for SelectScreen {
         if is_key_pressed(KeyCode::Right) {
             self.tx
                 .send(Message {
-                    target: self.map_list.id.clone(),
+                    target: self.chart_list.id.clone(),
                     data: MessageData::MenuButtonList(MenuButtonListMessage::Click(
-                        (self.map_list.selected + 1) % self.map_list.buttons.len(),
+                        (self.chart_list.selected + 1) % self.chart_list.buttons.len(),
                     )),
                 })
                 .unwrap();
         } else if is_key_pressed(KeyCode::Left) {
             self.tx
                 .send(Message {
-                    target: self.map_list.id.clone(),
+                    target: self.chart_list.id.clone(),
                     data: MessageData::MenuButtonList(MenuButtonListMessage::Click(
-                        (self.map_list.selected + self.map_list.buttons.len() - 1)
-                            % self.map_list.buttons.len(),
+                        (self.chart_list.selected + self.chart_list.buttons.len() - 1)
+                            % self.chart_list.buttons.len(),
                     )),
                 })
                 .unwrap();
@@ -238,13 +239,13 @@ impl Screen for SelectScreen {
         }
 
         for message in self.rx.drain() {
-            self.map_list.handle_message(&message);
+            self.chart_list.handle_message(&message);
             self.start.handle_message(&message);
-            if message.target == self.map_list.id {
+            if message.target == self.chart_list.id {
                 if let MessageData::MenuButtonList(MenuButtonListMessage::Selected(idx)) =
                     message.data
                 {
-                    self.selected_map = idx;
+                    self.selected_chart = idx;
                 }
                 if let MessageData::MenuButtonList(MenuButtonListMessage::SelectedSub(idx)) =
                     message.data
@@ -254,19 +255,19 @@ impl Screen for SelectScreen {
             }
             if message.target == self.start.id {
                 if let MessageData::MenuButton(MenuButtonMessage::Selected) = message.data {
-                    let map = &self.maps[self.selected_map];
+                    let chart = &self.charts[self.selected_chart];
                     data.state.lock().queued_screen = Some(Box::new(
                         Gameplay::new(
                             data.clone(),
-                            &map.title,
-                            &map.difficulties[self.selected_difficulty],
+                            &chart.title,
+                            &chart.difficulties[self.selected_difficulty],
                         )
                         .await,
                     ));
                 }
             }
         }
-        self.map_list.update(data.clone());
+        self.chart_list.update(data.clone());
         self.start.update(data.clone());
     }
 
@@ -283,7 +284,7 @@ impl Screen for SelectScreen {
                 },
             );
         }
-        self.map_list.draw(data.clone());
+        self.chart_list.draw(data.clone());
         self.start.draw(data);
 
         if self.loading_promise.is_some() {

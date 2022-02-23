@@ -1,5 +1,5 @@
 CREATE TABLE IF NOT EXISTS 'scores' (
-    map_id INTEGER,
+    chart_id INTEGER,
     diff_id INTEGER,
     hit_count INTEGER,
     miss_count INTEGER,
