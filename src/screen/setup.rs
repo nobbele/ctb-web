@@ -31,9 +31,9 @@ impl SetupScreen {
                     400.,
                 ),
                 &[
-                    "Left-handed (A D RShift)",
-                    "Right-handed (Left Right LShift)",
-                    "Custom (TODO)",
+                    ("Left-handed (A D RShift)", None),
+                    ("Right-handed (Left Right LShift)", None),
+                    ("Custom (TODO)", None),
                 ],
                 tx,
             ),
@@ -52,7 +52,7 @@ impl Screen for SetupScreen {
         self.binding_types.update(data.clone());
         for message in self.rx.drain() {
             self.binding_types.handle_message(&message);
-            if message.sender == self.binding_types.id {
+            if message.target == self.binding_types.id {
                 if let MessageData::MenuButtonList(MenuButtonListMessage::Selected(idx)) =
                     message.data
                 {

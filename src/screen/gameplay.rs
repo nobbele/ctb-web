@@ -214,7 +214,6 @@ impl Screen for Gameplay {
             if miss {
                 self.recorder.register_judgement(false);
                 self.deref_delete.push(idx);
-                println!("Miss!");
             }
             if hit || miss {
                 self.hyper_multiplier = fruit.hyper.unwrap_or(1.);

@@ -7,7 +7,7 @@ pub mod menubutton;
 pub mod menubuttonlist;
 
 pub struct Message {
-    pub sender: String,
+    pub target: String,
     pub data: MessageData,
 }
 

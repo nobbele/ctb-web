@@ -70,8 +70,6 @@ impl ScoreRecorder {
                     -1.1231385529709802e-005,
                 ],
             ) / 40.;
-            dbg!(self.chain_miss_count);
-            println!("{}%", hp_drain * 100.);
             self.hp -= hp_drain;
             self.hp = self.hp.max(0.);
 

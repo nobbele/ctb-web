@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use macroquad::prelude::*;
 use serde::ser::SerializeMap;
 
@@ -12,6 +10,7 @@ pub fn set_value<T: serde::Serialize>(key: &str, value: T) {
     }
     #[cfg(not(target_family = "wasm"))]
     {
+        use std::collections::HashMap;
         let mut config: HashMap<String, serde_json::Value> = match std::fs::OpenOptions::new()
             .read(true)
             .open("data/config.json")
@@ -41,7 +40,7 @@ pub fn get_value<T: serde::de::DeserializeOwned>(key: &str) -> Option<T> {
     #[cfg(target_family = "wasm")]
     {
         let storage = web_sys::window().unwrap().local_storage().unwrap().unwrap();
-        let value = storage.get_item(key).unwrap().unwrap();
+        let value = storage.get_item(key).unwrap()?;
         serde_json::from_str(&value).unwrap()
     }
     #[cfg(not(target_family = "wasm"))]

@@ -21,10 +21,8 @@ fn cache_to_file<R: Read>(key: &str, get: impl Fn() -> R) -> impl Read {
     let path: PathBuf = format!("data/cache/{}", key).into();
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     if std::fs::metadata(&path).is_ok() {
-        println!("Reading '{}' from cache", key);
         std::fs::OpenOptions::new().read(true).open(path).unwrap()
     } else {
-        println!("Caching '{}'", key);
         let mut file = std::fs::OpenOptions::new()
             .write(true)
             .create_new(true)
@@ -99,14 +97,22 @@ where
                 std::task::Poll::Pending
             }
         } else {
-            let f = self.f.take().unwrap();
-            let done = self.done.clone();
-            self.thread = Some(std::thread::spawn(move || {
-                let v = f();
-                done.store(true, Ordering::Relaxed);
-                v
-            }));
-            std::task::Poll::Pending
+            #[cfg(target_family = "wasm")]
+            {
+                self.done.store(true, Ordering::Relaxed);
+                std::task::Poll::Ready((self.f.take().unwrap())())
+            }
+            #[cfg(not(target_family = "wasm"))]
+            {
+                let f = self.f.take().unwrap();
+                let done = self.done.clone();
+                self.thread = Some(std::thread::spawn(move || {
+                    let v = f();
+                    done.store(true, Ordering::Relaxed);
+                    v
+                }));
+                std::task::Poll::Pending
+            }
         }
     }
 }

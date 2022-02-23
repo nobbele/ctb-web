@@ -27,10 +27,11 @@ pub struct SelectScreen {
     selected_map: usize,
     selected_difficulty: usize,
 
+    scroll_vel: f32,
+
     rx: flume::Receiver<Message>,
     tx: flume::Sender<Message>,
     map_list: MenuButtonList,
-    difficulty_list: Option<MenuButtonList>,
 
     start: MenuButton,
     loading_promise: Option<Promise<(SoundHandle, Texture2D)>>,
@@ -60,18 +61,33 @@ impl SelectScreen {
                 ],
             },
         ];
+        let maps_raw = maps
+            .iter()
+            .map(|map| {
+                (
+                    map.title.as_str(),
+                    Some(
+                        map.difficulties
+                            .iter()
+                            .map(|diff| diff.as_str())
+                            .collect::<Vec<_>>(),
+                    ),
+                )
+            })
+            .collect::<Vec<_>>();
         let map_list = MenuButtonList::new(
             "button_list".to_string(),
-            Popout::Right,
-            Rect::new(-400. / 4., 0., 400., 400.),
-            maps.iter()
-                .map(|map| map.title.as_str())
+            Popout::Left,
+            Rect::new(screen_width() - 400., 0., 400., 400.),
+            maps_raw
+                .iter()
+                .map(|map| (map.0, map.1.as_ref().map(|diff| diff.as_slice())))
                 .collect::<Vec<_>>()
                 .as_slice(),
             tx.clone(),
         );
         tx.send(Message {
-            sender: map_list.id.clone(),
+            target: map_list.id.clone(),
             data: MessageData::MenuButtonList(MenuButtonListMessage::Click(0)),
         })
         .unwrap();
@@ -81,11 +97,12 @@ impl SelectScreen {
             selected_map: usize::MAX,
             selected_difficulty: 0,
 
+            scroll_vel: 0.,
+
             maps,
             rx,
             tx: tx.clone(),
             map_list,
-            difficulty_list: None,
             start: MenuButton::new(
                 "start".to_string(),
                 "Start".to_string(),
@@ -141,34 +158,15 @@ impl Screen for SelectScreen {
                 data.state.lock().music =
                     sound.play(InstanceSettings::default().volume(0.5)).unwrap();
 
-                let difficulty_list = MenuButtonList::new(
-                    "difficulty_list".to_string(),
-                    Popout::Left,
-                    Rect::new(screen_width() - 400. + 400. / 4., 0., 400., 400.),
-                    &self.maps[self.selected_map]
-                        .difficulties
-                        .iter()
-                        .map(|s| s.as_str())
-                        .collect::<Vec<_>>(),
-                    self.tx.clone(),
-                );
-                self.tx
-                    .send(Message {
-                        sender: difficulty_list.id.clone(),
-                        data: MessageData::MenuButtonList(MenuButtonListMessage::Click(0)),
-                    })
-                    .unwrap();
-                self.difficulty_list = Some(difficulty_list);
-
                 self.loading_promise = None;
             }
         }
 
-        if let Some(difficulty_list) = &self.difficulty_list {
+        /*if let Some(difficulty_list) = &self.difficulty_list {
             if is_key_pressed(KeyCode::Down) {
                 self.tx
                     .send(Message {
-                        sender: difficulty_list.id.clone(),
+                        target: difficulty_list.id.clone(),
                         data: MessageData::MenuButtonList(MenuButtonListMessage::Click(
                             (difficulty_list.selected + 1) % difficulty_list.buttons.len(),
                         )),
@@ -177,7 +175,7 @@ impl Screen for SelectScreen {
             } else if is_key_pressed(KeyCode::Up) {
                 self.tx
                     .send(Message {
-                        sender: difficulty_list.id.clone(),
+                        target: difficulty_list.id.clone(),
                         data: MessageData::MenuButtonList(MenuButtonListMessage::Click(
                             (difficulty_list.selected + difficulty_list.buttons.len() - 1)
                                 % difficulty_list.buttons.len(),
@@ -185,12 +183,26 @@ impl Screen for SelectScreen {
                     })
                     .unwrap();
             }
+        }*/
+
+        let scroll_delta = mouse_wheel().1;
+        if scroll_delta != 0. {
+            self.scroll_vel += scroll_delta * 1.5;
+            self.scroll_vel = self.scroll_vel.clamp(-18., 18.);
+        }
+        if self.scroll_vel != 0. {
+            let mut bounds = self.map_list.bounds();
+            bounds.y += self.scroll_vel;
+            bounds.y = bounds.y.clamp(-(bounds.h - screen_height()).max(0.), 0.);
+            self.map_list.set_bounds(bounds);
+
+            self.scroll_vel -= self.scroll_vel * get_frame_time() * 5.;
         }
 
         if is_key_pressed(KeyCode::Right) {
             self.tx
                 .send(Message {
-                    sender: self.map_list.id.clone(),
+                    target: self.map_list.id.clone(),
                     data: MessageData::MenuButtonList(MenuButtonListMessage::Click(
                         (self.map_list.selected + 1) % self.map_list.buttons.len(),
                     )),
@@ -199,7 +211,7 @@ impl Screen for SelectScreen {
         } else if is_key_pressed(KeyCode::Left) {
             self.tx
                 .send(Message {
-                    sender: self.map_list.id.clone(),
+                    target: self.map_list.id.clone(),
                     data: MessageData::MenuButtonList(MenuButtonListMessage::Click(
                         (self.map_list.selected + self.map_list.buttons.len() - 1)
                             % self.map_list.buttons.len(),
@@ -211,7 +223,7 @@ impl Screen for SelectScreen {
         if is_key_pressed(KeyCode::Enter) {
             self.tx
                 .send(Message {
-                    sender: self.start.id.clone(),
+                    target: self.start.id.clone(),
                     data: MessageData::MenuButton(MenuButtonMessage::Selected),
                 })
                 .unwrap();
@@ -219,27 +231,20 @@ impl Screen for SelectScreen {
 
         for message in self.rx.drain() {
             self.map_list.handle_message(&message);
-            if let Some(difficulty_list) = &mut self.difficulty_list {
-                difficulty_list.handle_message(&message);
-            }
             self.start.handle_message(&message);
-            if message.sender == self.map_list.id {
+            if message.target == self.map_list.id {
                 if let MessageData::MenuButtonList(MenuButtonListMessage::Selected(idx)) =
                     message.data
                 {
                     self.selected_map = idx;
                 }
-            }
-            if let Some(ref mut difficulty_list) = self.difficulty_list {
-                if message.sender == difficulty_list.id {
-                    if let MessageData::MenuButtonList(MenuButtonListMessage::Selected(idx)) =
-                        message.data
-                    {
-                        self.selected_difficulty = idx;
-                    }
+                if let MessageData::MenuButtonList(MenuButtonListMessage::SelectedSub(idx)) =
+                    message.data
+                {
+                    self.selected_difficulty = idx;
                 }
             }
-            if message.sender == self.start.id {
+            if message.target == self.start.id {
                 if let MessageData::MenuButton(MenuButtonMessage::Selected) = message.data {
                     let map = &self.maps[self.selected_map];
                     data.state.lock().queued_screen = Some(Box::new(
@@ -254,9 +259,6 @@ impl Screen for SelectScreen {
             }
         }
         self.map_list.update(data.clone());
-        if let Some(difficulty_list) = &mut self.difficulty_list {
-            difficulty_list.update(data.clone());
-        }
         self.start.update(data.clone());
     }
 
@@ -274,9 +276,6 @@ impl Screen for SelectScreen {
             );
         }
         self.map_list.draw(data.clone());
-        if let Some(ref list) = self.difficulty_list {
-            list.draw(data.clone());
-        }
         self.start.draw(data);
 
         if self.loading_promise.is_some() {

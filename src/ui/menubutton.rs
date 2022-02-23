@@ -1,9 +1,7 @@
-use std::sync::Arc;
-
-use crate::GameData;
-
 use super::{Message, MessageData, UiElement};
+use crate::GameData;
 use macroquad::prelude::*;
+use std::sync::Arc;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Popout {
@@ -92,7 +90,7 @@ impl UiElement for MenuButton {
             if !self.hovered {
                 self.tx
                     .send(Message {
-                        sender: self.id.clone(),
+                        target: self.id.clone(),
                         data: MessageData::MenuButton(MenuButtonMessage::Hovered),
                     })
                     .unwrap();
@@ -100,7 +98,7 @@ impl UiElement for MenuButton {
             if is_mouse_button_pressed(MouseButton::Left) {
                 self.tx
                     .send(Message {
-                        sender: self.id.clone(),
+                        target: self.id.clone(),
                         data: MessageData::MenuButton(MenuButtonMessage::Selected),
                     })
                     .unwrap();
@@ -108,7 +106,7 @@ impl UiElement for MenuButton {
         } else if self.hovered {
             self.tx
                 .send(Message {
-                    sender: self.id.clone(),
+                    target: self.id.clone(),
                     data: MessageData::MenuButton(MenuButtonMessage::Unhovered),
                 })
                 .unwrap();
@@ -125,8 +123,8 @@ impl UiElement for MenuButton {
             self.offset -= 2. * get_frame_time();
         }
         self.offset = self.offset.clamp(0., 1.0);
-        let x_offset = self.offset * self.rect.w / 4.;
-        let y_offset = self.offset * self.rect.h / 4.;
+        let x_offset = self.offset * self.rect.w / 10.;
+        let y_offset = self.offset * self.rect.h / 10.;
 
         match self.popout {
             Popout::None => {}
@@ -146,7 +144,7 @@ impl UiElement for MenuButton {
     }
 
     fn handle_message(&mut self, message: &Message) {
-        if message.sender == self.id {
+        if message.target == self.id {
             if let MessageData::MenuButton(MenuButtonMessage::Hovered) = message.data {
                 self.hovered = true;
             } else if let MessageData::MenuButton(MenuButtonMessage::Unhovered) = message.data {
