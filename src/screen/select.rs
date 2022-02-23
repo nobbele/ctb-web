@@ -1,4 +1,4 @@
-use super::{gameplay::Gameplay, Screen};
+use super::{gameplay::Gameplay, get_charts, ChartInfo, Screen};
 use crate::{
     promise::Promise,
     ui::{
@@ -9,21 +9,23 @@ use crate::{
     GameData,
 };
 use async_trait::async_trait;
-use gluesql::prelude::Payload;
+use gluesql::prelude::{Payload, Value};
 use kira::{
     instance::{InstanceSettings, StopInstanceSettings},
     sound::handle::SoundHandle,
 };
 use macroquad::prelude::*;
-use std::sync::Arc;
+use num_format::{Locale, ToFormattedString};
+use std::{collections::HashMap, ops::Deref, sync::Arc};
 
-struct ChartListing {
-    title: String,
-    difficulties: Vec<String>,
+#[derive(Debug, Clone)]
+struct LeaderboardEntry {
+    score: u32,
+    accuracy: f32,
 }
 
 pub struct SelectScreen {
-    charts: Vec<ChartListing>,
+    charts: Vec<ChartInfo>,
     prev_selected_chart: usize,
     selected_chart: usize,
     selected_difficulty: usize,
@@ -33,35 +35,16 @@ pub struct SelectScreen {
     rx: flume::Receiver<Message>,
     tx: flume::Sender<Message>,
     chart_list: MenuButtonList,
+    leaderboard: Option<MenuButtonList>,
 
     start: MenuButton,
     loading_promise: Option<Promise<(SoundHandle, Texture2D)>>,
 }
 
 impl SelectScreen {
-    pub fn new(data: Arc<GameData>) -> Self {
+    pub fn new(_data: Arc<GameData>) -> Self {
         let (tx, rx) = flume::unbounded();
-        let charts = vec![
-            ChartListing {
-                title: "Kizuato".to_string(),
-                difficulties: vec!["Platter".to_string(), "Ascendance's Rain".to_string()],
-            },
-            ChartListing {
-                title: "Padoru".to_string(),
-                difficulties: vec!["Salad".to_string(), "Platter".to_string()],
-            },
-            ChartListing {
-                title: "Troublemaker".to_string(),
-                difficulties: vec![
-                    "Cup".to_string(),
-                    "Equim's Rain".to_string(),
-                    "Kagari's Himedose".to_string(),
-                    "MBomb's Light Rain".to_string(),
-                    "Platter".to_string(),
-                    "tocean's Salad".to_string(),
-                ],
-            },
-        ];
+        let charts = get_charts();
         let charts_raw = charts
             .iter()
             .map(|chart| {
@@ -71,7 +54,7 @@ impl SelectScreen {
                         chart
                             .difficulties
                             .iter()
-                            .map(|diff| diff.as_str())
+                            .map(|diff| diff.name.as_str())
                             .collect::<Vec<_>>(),
                     ),
                 )
@@ -93,13 +76,6 @@ impl SelectScreen {
             data: MessageData::MenuButtonList(MenuButtonListMessage::Click(0)),
         })
         .unwrap();
-
-        match data.glue.lock().execute("SELECT * FROM 'scores'").unwrap() {
-            Payload::Select { labels, rows } => {
-                println!("{:?}, {:?}", labels, rows);
-            }
-            _ => unreachable!(),
-        }
 
         SelectScreen {
             prev_selected_chart: usize::MAX,
@@ -125,6 +101,7 @@ impl SelectScreen {
                 tx,
             ),
             loading_promise: None,
+            leaderboard: None,
         }
     }
 }
@@ -134,7 +111,6 @@ impl Screen for SelectScreen {
     async fn update(&mut self, data: Arc<GameData>) {
         if self.selected_chart != self.prev_selected_chart {
             let data_clone = data.clone();
-            let chart_title = self.charts[self.selected_chart].title.clone();
             if let Some(loading_promise) = &self.loading_promise {
                 data.exec.lock().cancel(loading_promise);
             }
@@ -143,12 +119,18 @@ impl Screen for SelectScreen {
                     .audio_cache
                     .get_sound(
                         &mut data_clone.audio.lock(),
-                        &format!("resources/{}/audio.wav", chart_title),
+                        &format!(
+                            "resources/{}/audio.wav",
+                            data_clone.state.lock().chart.title
+                        ),
                     )
                     .await;
                 let background = data_clone
                     .image_cache
-                    .get_texture(&format!("resources/{}/bg.png", chart_title))
+                    .get_texture(&format!(
+                        "resources/{}/bg.png",
+                        data_clone.state.lock().chart.title
+                    ))
                     .await;
                 (sound, background)
             }));
@@ -241,16 +223,79 @@ impl Screen for SelectScreen {
         for message in self.rx.drain() {
             self.chart_list.handle_message(&message);
             self.start.handle_message(&message);
+            if let Some(leaderboard) = &mut self.leaderboard {
+                leaderboard.handle_message(&message);
+            }
             if message.target == self.chart_list.id {
                 if let MessageData::MenuButtonList(MenuButtonListMessage::Selected(idx)) =
                     message.data
                 {
                     self.selected_chart = idx;
+                    let chart = &self.charts[self.selected_chart];
+                    data.state.lock().chart = chart.clone();
                 }
                 if let MessageData::MenuButtonList(MenuButtonListMessage::SelectedSub(idx)) =
                     message.data
                 {
                     self.selected_difficulty = idx;
+                    data.state.lock().difficulty_idx = idx;
+                    let diff_id = data.state.lock().chart.difficulties[idx].id;
+                    let leaderboard = data
+                        .glue
+                        .lock()
+                        .execute_async(&format!(
+                            include_str!("../queries/local_leaderboard.sql"),
+                            diff_id
+                        ))
+                        .await
+                        .unwrap();
+                    let mut entries = Vec::new();
+                    match leaderboard {
+                        Payload::Select { labels, rows } => {
+                            for row in rows {
+                                let map = labels
+                                    .iter()
+                                    .map(Deref::deref)
+                                    .zip(row.iter().map(|col| match col {
+                                        Value::I64(v) => *v as u32,
+                                        _ => unreachable!(),
+                                    }))
+                                    .collect::<HashMap<_, _>>();
+                                let entry = LeaderboardEntry {
+                                    score: map["score"],
+                                    accuracy: map["hit_count"] as f32
+                                        / (map["hit_count"] + map["miss_count"]) as f32,
+                                };
+                                dbg!(&entry);
+                                entries.push(entry);
+                            }
+                        }
+                        _ => unreachable!(),
+                    }
+                    let button_title = entries
+                        .iter()
+                        .map(|entry| {
+                            (
+                                format!(
+                                    "{} ({:.2}%)",
+                                    entry.score.to_formatted_string(&Locale::en),
+                                    entry.accuracy * 100.
+                                ),
+                                None,
+                            )
+                        })
+                        .collect::<Vec<_>>();
+                    self.leaderboard = Some(MenuButtonList::new(
+                        "leaderboard".to_owned(),
+                        Popout::Towards,
+                        Rect::new(5., 5., 400., 0.),
+                        button_title
+                            .iter()
+                            .map(|title| (title.0.as_str(), title.1))
+                            .collect::<Vec<_>>()
+                            .as_slice(),
+                        self.tx.clone(),
+                    ));
                 }
             }
             if message.target == self.start.id {
@@ -260,7 +305,7 @@ impl Screen for SelectScreen {
                         Gameplay::new(
                             data.clone(),
                             &chart.title,
-                            &chart.difficulties[self.selected_difficulty],
+                            &chart.difficulties[self.selected_difficulty].name,
                         )
                         .await,
                     ));
@@ -269,6 +314,9 @@ impl Screen for SelectScreen {
         }
         self.chart_list.update(data.clone());
         self.start.update(data.clone());
+        if let Some(leaderboard) = &mut self.leaderboard {
+            leaderboard.update(data);
+        }
     }
 
     fn draw(&self, data: Arc<GameData>) {
@@ -285,7 +333,10 @@ impl Screen for SelectScreen {
             );
         }
         self.chart_list.draw(data.clone());
-        self.start.draw(data);
+        self.start.draw(data.clone());
+        if let Some(leaderboard) = &self.leaderboard {
+            leaderboard.draw(data);
+        }
 
         if self.loading_promise.is_some() {
             let loading_dim = measure_text("Loading...", None, 36, 1.);

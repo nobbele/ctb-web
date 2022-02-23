@@ -23,18 +23,96 @@ pub mod result;
 pub mod select;
 pub mod setup;
 
+#[derive(Debug, Clone)]
+pub struct DifficultyInfo {
+    pub id: u32,
+    pub name: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct ChartInfo {
+    pub id: u32,
+    pub title: String,
+    pub difficulties: Vec<DifficultyInfo>,
+}
+
+pub fn get_charts() -> Vec<ChartInfo> {
+    vec![
+        ChartInfo {
+            id: 1,
+            title: "Kizuato".to_string(),
+            difficulties: vec![
+                DifficultyInfo {
+                    id: 1,
+                    name: "Platter".to_string(),
+                },
+                DifficultyInfo {
+                    id: 2,
+                    name: "Ascendance's Rain".to_string(),
+                },
+            ],
+        },
+        ChartInfo {
+            id: 2,
+            title: "Padoru".to_string(),
+            difficulties: vec![
+                DifficultyInfo {
+                    id: 3,
+                    name: "Salad".to_string(),
+                },
+                DifficultyInfo {
+                    id: 4,
+                    name: "Platter".to_string(),
+                },
+            ],
+        },
+        ChartInfo {
+            id: 3,
+            title: "Troublemaker".to_string(),
+            difficulties: vec![
+                DifficultyInfo {
+                    id: 5,
+                    name: "Cup".to_string(),
+                },
+                DifficultyInfo {
+                    id: 6,
+                    name: "tocean's Salad".to_string(),
+                },
+                DifficultyInfo {
+                    id: 7,
+                    name: "Platter".to_string(),
+                },
+                DifficultyInfo {
+                    id: 8,
+                    name: "MBomb's Light Rain".to_string(),
+                },
+                DifficultyInfo {
+                    id: 9,
+                    name: "Equim's Rain".to_string(),
+                },
+                DifficultyInfo {
+                    id: 10,
+                    name: "Kagari's Himedose".to_string(),
+                },
+            ],
+        },
+    ]
+}
+
 #[async_trait(?Send)]
-trait Screen {
+pub trait Screen {
     async fn update(&mut self, data: Arc<GameData>);
     fn draw(&self, data: Arc<GameData>);
 }
 
 pub struct GameState {
-    music: InstanceHandle,
-    background: Option<Texture2D>,
-    queued_screen: Option<Box<dyn Screen>>,
-    audio_frame_skip: u32,
-    binds: KeyBinds,
+    pub chart: ChartInfo,
+    pub difficulty_idx: usize,
+    pub music: InstanceHandle,
+    pub background: Option<Texture2D>,
+    pub queued_screen: Option<Box<dyn Screen>>,
+    pub audio_frame_skip: u32,
+    pub binds: KeyBinds,
 }
 
 pub struct GameData {
@@ -65,14 +143,14 @@ impl Game {
         let mut audio = AudioManager::new(AudioManagerSettings::default()).unwrap();
 
         let storage = SledStorage::new("data/doc-db").unwrap();
-        let mut glue = Glue::new(storage);
+        let glue = Glue::new(storage);
 
-        glue.execute_async("DROP TABLE IF EXISTS 'scores'; DROP TABLE IF EXISTS 'maps'; DROP TABLE IF EXISTS 'diffs'; ")
+        /*glue.execute_async("DROP TABLE IF EXISTS 'scores'; DROP TABLE IF EXISTS 'maps'; DROP TABLE IF EXISTS 'diffs'; ")
         .await
         .unwrap();
         glue.execute_async(include_str!("../queries/initialize.sql"))
             .await
-            .unwrap();
+            .unwrap();*/
 
         let audio_cache = Cache::new("data/cache/audio");
         let image_cache = Cache::new("data/cache/image");
@@ -105,6 +183,15 @@ impl Game {
                 queued_screen: None,
                 audio_frame_skip: 0,
                 binds,
+                chart: ChartInfo {
+                    id: 0,
+                    title: "NULL".to_owned(),
+                    difficulties: vec![DifficultyInfo {
+                        id: 0,
+                        name: "NULL".to_owned(),
+                    }],
+                },
+                difficulty_idx: 0,
             }),
             exec,
             glue: Mutex::new(glue),

@@ -234,12 +234,13 @@ impl Screen for Gameplay {
                 top_combo: self.recorder.top_combo,
                 accuracy: self.recorder.accuracy,
             }));
+            let diff_idx = data.state.lock().difficulty_idx;
+            let diff_id = data.state.lock().chart.difficulties[diff_idx].id;
             data.glue
                 .lock()
                 .execute_async(&format!(
-                    "INSERT INTO 'scores' VALUES ({}, {}, {}, {}, {}, {})",
-                    0,
-                    0,
+                    include_str!("../queries/insert_leaderboard.sql"),
+                    diff_id,
                     self.recorder.hit_count,
                     self.recorder.miss_count,
                     self.recorder.score,
