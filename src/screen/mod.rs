@@ -8,6 +8,7 @@ use crate::{
 
 use self::{select::SelectScreen, setup::SetupScreen};
 use async_trait::async_trait;
+use gluesql::prelude::{Glue, SledStorage};
 use kira::{
     instance::{handle::InstanceHandle, InstanceSettings, StopInstanceSettings},
     manager::{AudioManager, AudioManagerSettings},
@@ -46,11 +47,12 @@ pub struct GameData {
     pub image_cache: Cache<Texture2D>,
 
     pub state: Mutex<GameState>,
-    pub exec: Arc<Mutex<PromiseExecutor>>,
+    pub exec: Mutex<PromiseExecutor>,
+    pub glue: Mutex<Glue<gluesql::sled_storage::sled::IVec, SledStorage>>,
 }
 
 pub struct Game {
-    data: Arc<GameData>,
+    pub data: Arc<GameData>,
     screen: Box<dyn Screen>,
 
     prev_time: f32,
@@ -59,8 +61,18 @@ pub struct Game {
 }
 
 impl Game {
-    pub async fn new(exec: Arc<Mutex<PromiseExecutor>>) -> Self {
+    pub async fn new(exec: Mutex<PromiseExecutor>) -> Self {
         let mut audio = AudioManager::new(AudioManagerSettings::default()).unwrap();
+
+        let storage = SledStorage::new("data/doc-db").unwrap();
+        let mut glue = Glue::new(storage);
+
+        glue.execute_async("DROP TABLE IF EXISTS 'scores'; DROP TABLE IF EXISTS 'maps'; DROP TABLE IF EXISTS 'diffs'; ")
+        .await
+        .unwrap();
+        glue.execute_async(include_str!("../queries/initialize.sql"))
+            .await
+            .unwrap();
 
         let audio_cache = Cache::new("data/cache/audio");
         let image_cache = Cache::new("data/cache/image");
@@ -95,6 +107,7 @@ impl Game {
                 binds,
             }),
             exec,
+            glue: Mutex::new(glue),
         });
 
         Game {

@@ -3,7 +3,6 @@ use macroquad::prelude::*;
 use parking_lot::Mutex;
 use promise::PromiseExecutor;
 use screen::{Game, GameData};
-use std::sync::Arc;
 
 pub mod cache;
 pub mod chart;
@@ -15,10 +14,10 @@ pub mod ui;
 
 #[macroquad::main(window_conf)]
 async fn main() {
-    let exec = Arc::new(Mutex::new(PromiseExecutor::new()));
-    let mut game = Game::new(exec.clone()).await;
+    let exec = Mutex::new(PromiseExecutor::new());
+    let mut game = Game::new(exec).await;
     loop {
-        exec.lock().poll();
+        game.data.exec.lock().poll();
         game.update().await;
 
         clear_background(BLACK);

@@ -234,6 +234,19 @@ impl Screen for Gameplay {
                 top_combo: self.recorder.top_combo,
                 accuracy: self.recorder.accuracy,
             }));
+            data.glue
+                .lock()
+                .execute_async(&format!(
+                    "INSERT INTO 'scores' VALUES ({}, {}, {}, {}, {}, {})",
+                    0,
+                    0,
+                    self.recorder.hit_count,
+                    self.recorder.miss_count,
+                    self.recorder.score,
+                    self.recorder.top_combo
+                ))
+                .await
+                .unwrap();
         }
 
         if is_key_pressed(KeyCode::O) {

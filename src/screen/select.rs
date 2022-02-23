@@ -9,6 +9,7 @@ use crate::{
     GameData,
 };
 use async_trait::async_trait;
+use gluesql::prelude::Payload;
 use kira::{
     instance::{InstanceSettings, StopInstanceSettings},
     sound::handle::SoundHandle,
@@ -38,7 +39,7 @@ pub struct SelectScreen {
 }
 
 impl SelectScreen {
-    pub fn new(_data: Arc<GameData>) -> Self {
+    pub fn new(data: Arc<GameData>) -> Self {
         let (tx, rx) = flume::unbounded();
         let maps = vec![
             MapListing {
@@ -91,6 +92,13 @@ impl SelectScreen {
             data: MessageData::MenuButtonList(MenuButtonListMessage::Click(0)),
         })
         .unwrap();
+
+        match data.glue.lock().execute("SELECT * FROM 'scores'").unwrap() {
+            Payload::Select { labels, rows } => {
+                println!("{:?}, {:?}", labels, rows);
+            }
+            _ => unreachable!(),
+        }
 
         SelectScreen {
             prev_selected_map: usize::MAX,
