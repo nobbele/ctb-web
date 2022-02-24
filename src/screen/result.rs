@@ -1,4 +1,4 @@
-use crate::GameData;
+use crate::{score::Score, GameData};
 use async_trait::async_trait;
 use macroquad::prelude::*;
 use std::sync::Arc;
@@ -14,6 +14,20 @@ pub struct ResultScreen {
     pub miss_count: u32,
     pub top_combo: u32,
     pub accuracy: f32,
+}
+
+impl ResultScreen {
+    pub fn new(score: &Score) -> Self {
+        ResultScreen {
+            title: "TODO".to_string(),
+            difficulty: "TODO".to_string(),
+            score: score.score,
+            hit_count: score.hit_count,
+            miss_count: score.miss_count,
+            top_combo: score.top_combo,
+            accuracy: score.hit_count as f32 / (score.hit_count + score.miss_count) as f32,
+        }
+    }
 }
 
 #[async_trait(?Send)]

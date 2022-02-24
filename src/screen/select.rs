@@ -266,7 +266,6 @@ impl Screen for SelectScreen {
                                     accuracy: map["hit_count"] as f32
                                         / (map["hit_count"] + map["miss_count"]) as f32,
                                 };
-                                dbg!(&entry);
                                 entries.push(entry);
                             }
                         }

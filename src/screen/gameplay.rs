@@ -1,5 +1,5 @@
 use super::{result::ResultScreen, select::SelectScreen, Screen};
-use crate::{chart::Chart, score_recorder::ScoreRecorder, GameData};
+use crate::{chart::Chart, leaderboard::submit_score, score::ScoreRecorder, GameData};
 use async_trait::async_trait;
 use kira::instance::{
     InstanceSettings, PauseInstanceSettings, ResumeInstanceSettings, StopInstanceSettings,
@@ -225,29 +225,11 @@ impl Screen for Gameplay {
         }
 
         if self.recorder.hp == 0. || self.queued_fruits.is_empty() {
-            data.state.lock().queued_screen = Some(Box::new(ResultScreen {
-                title: "TODO".to_string(),
-                difficulty: "TODO".to_string(),
-                score: self.recorder.score,
-                hit_count: self.recorder.hit_count,
-                miss_count: self.recorder.miss_count,
-                top_combo: self.recorder.top_combo,
-                accuracy: self.recorder.accuracy,
-            }));
             let diff_idx = data.state.lock().difficulty_idx;
             let diff_id = data.state.lock().chart.difficulties[diff_idx].id;
-            data.glue
-                .lock()
-                .execute_async(&format!(
-                    include_str!("../queries/insert_leaderboard.sql"),
-                    diff_id,
-                    self.recorder.hit_count,
-                    self.recorder.miss_count,
-                    self.recorder.score,
-                    self.recorder.top_combo
-                ))
-                .await
-                .unwrap();
+            let score = self.recorder.to_score(diff_id);
+            submit_score(data.clone(), &score).await;
+            data.state.lock().queued_screen = Some(Box::new(ResultScreen::new(&score)));
         }
 
         if is_key_pressed(KeyCode::O) {

@@ -1,3 +1,11 @@
+pub struct Score {
+    pub diff_id: u32,
+    pub top_combo: u32,
+    pub hit_count: u32,
+    pub miss_count: u32,
+    pub score: u32,
+}
+
 pub struct ScoreRecorder {
     pub combo: u32,
     pub top_combo: u32,
@@ -77,6 +85,16 @@ impl ScoreRecorder {
         }
 
         self.accuracy = self.hit_count as f32 / (self.hit_count + self.miss_count) as f32;
+    }
+
+    pub fn to_score(&self, diff_id: u32) -> Score {
+        Score {
+            diff_id,
+            top_combo: self.top_combo,
+            hit_count: self.hit_count,
+            miss_count: self.miss_count,
+            score: self.score,
+        }
     }
 }
 

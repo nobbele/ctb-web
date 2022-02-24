@@ -7,8 +7,9 @@ use screen::{Game, GameData};
 pub mod cache;
 pub mod chart;
 pub mod config;
+pub mod leaderboard;
 pub mod promise;
-pub mod score_recorder;
+pub mod score;
 pub mod screen;
 pub mod ui;
 
