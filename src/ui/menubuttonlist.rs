@@ -8,6 +8,7 @@ use std::sync::Arc;
 
 pub enum MenuButtonListMessage {
     Click(usize),
+    ClickSub(usize),
     Selected(usize),
     SelectedSub(usize),
 }
@@ -111,6 +112,27 @@ impl UiElement for MenuButtonList {
                 self.tx
                     .send(Message {
                         target: self.buttons[idx].0.id.clone(),
+                        data: MessageData::MenuButton(MenuButtonMessage::Selected),
+                    })
+                    .unwrap();
+            }
+        }
+        if message.target == self.id {
+            if let MessageData::MenuButtonList(MenuButtonListMessage::ClickSub(idx)) = message.data
+            {
+                self.tx
+                    .send(Message {
+                        target: self.buttons[self.selected].1.as_ref().unwrap()[idx]
+                            .id
+                            .clone(),
+                        data: MessageData::MenuButton(MenuButtonMessage::Unselected),
+                    })
+                    .unwrap();
+                self.tx
+                    .send(Message {
+                        target: self.buttons[self.selected].1.as_ref().unwrap()[idx]
+                            .id
+                            .clone(),
                         data: MessageData::MenuButton(MenuButtonMessage::Selected),
                     })
                     .unwrap();

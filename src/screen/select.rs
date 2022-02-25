@@ -36,6 +36,7 @@ pub struct SelectScreen {
     tx: flume::Sender<Message>,
     chart_list: MenuButtonList,
     leaderboard: Option<MenuButtonList>,
+    scroll_target: Option<f32>,
 
     start: MenuButton,
     loading_promise: Option<Promise<(SoundHandle, Texture2D)>>,
@@ -102,6 +103,7 @@ impl SelectScreen {
             ),
             loading_promise: None,
             leaderboard: None,
+            scroll_target: None,
         }
     }
 }
@@ -153,38 +155,39 @@ impl Screen for SelectScreen {
             }
         }
 
-        /*if let Some(difficulty_list) = &self.difficulty_list {
-            if is_key_pressed(KeyCode::Down) {
-                self.tx
-                    .send(Message {
-                        target: difficulty_list.id.clone(),
-                        data: MessageData::MenuButtonList(MenuButtonListMessage::Click(
-                            (difficulty_list.selected + 1) % difficulty_list.buttons.len(),
-                        )),
-                    })
-                    .unwrap();
-            } else if is_key_pressed(KeyCode::Up) {
-                self.tx
-                    .send(Message {
-                        target: difficulty_list.id.clone(),
-                        data: MessageData::MenuButtonList(MenuButtonListMessage::Click(
-                            (difficulty_list.selected + difficulty_list.buttons.len() - 1)
-                                % difficulty_list.buttons.len(),
-                        )),
-                    })
-                    .unwrap();
-            }
-        }*/
-
         let scroll_delta = mouse_wheel().1;
         if scroll_delta != 0. {
             self.scroll_vel += scroll_delta * 1.5;
-            self.scroll_vel = self.scroll_vel.clamp(-18., 18.);
         }
+        if let Some(scroll_target) = self.scroll_target {
+            let offset = screen_height() / 2. - (self.chart_list.bounds().y + scroll_target);
+            // Check if target is within reasonable bounds.
+            if offset.abs() < 10. {
+                self.scroll_vel = 0.;
+                self.scroll_target = None;
+            } else {
+                self.scroll_vel += offset / 400.;
+            }
+        }
+
+        self.scroll_vel = self.scroll_vel.clamp(-18., 18.);
         if self.scroll_vel != 0. {
             let mut bounds = self.chart_list.bounds();
             bounds.y += self.scroll_vel;
+
+            let pre_clamp = bounds.y;
             bounds.y = bounds.y.clamp(-(bounds.h - screen_height()).max(0.), 0.);
+            if bounds.y != pre_clamp {
+                // Check target is in the same direction as where it got clamped.
+                // Meaning the target is in an unreachable spot such as the top or bottom of the screen.
+                if let Some(scroll_target) = self.scroll_target {
+                    if scroll_target.signum() != self.scroll_vel.signum() {
+                        self.scroll_target = None;
+                    }
+                }
+                self.scroll_vel = 0.;
+            }
+
             self.chart_list.set_bounds(bounds);
 
             self.scroll_vel -= self.scroll_vel * get_frame_time() * 5.;
@@ -211,6 +214,36 @@ impl Screen for SelectScreen {
                 .unwrap();
         }
 
+        if is_key_pressed(KeyCode::Down) {
+            self.tx
+                .send(Message {
+                    target: self.chart_list.id.clone(),
+                    data: MessageData::MenuButtonList(MenuButtonListMessage::ClickSub(
+                        (self.chart_list.sub_selected + 1)
+                            % self.chart_list.buttons[self.chart_list.selected]
+                                .1
+                                .as_ref()
+                                .unwrap()
+                                .len(),
+                    )),
+                })
+                .unwrap();
+        } else if is_key_pressed(KeyCode::Up) {
+            let len = self.chart_list.buttons[self.chart_list.selected]
+                .1
+                .as_ref()
+                .unwrap()
+                .len();
+            self.tx
+                .send(Message {
+                    target: self.chart_list.id.clone(),
+                    data: MessageData::MenuButtonList(MenuButtonListMessage::ClickSub(
+                        (self.chart_list.sub_selected + len - 1) % len,
+                    )),
+                })
+                .unwrap();
+        }
+
         if is_key_pressed(KeyCode::Enter) {
             self.tx
                 .send(Message {
@@ -220,7 +253,7 @@ impl Screen for SelectScreen {
                 .unwrap();
         }
 
-        for message in self.rx.drain() {
+        for message in self.rx.try_iter() {
             self.chart_list.handle_message(&message);
             self.start.handle_message(&message);
             if let Some(leaderboard) = &mut self.leaderboard {
@@ -295,6 +328,15 @@ impl Screen for SelectScreen {
                             .as_slice(),
                         self.tx.clone(),
                     ));
+
+                    let sub_button = &self.chart_list.buttons[self.chart_list.selected]
+                        .1
+                        .as_ref()
+                        .unwrap()[self.chart_list.sub_selected];
+                    self.scroll_target = Some(
+                        sub_button.bounds().y + sub_button.bounds().h / 2.
+                            - self.chart_list.bounds().y,
+                    );
                 }
             }
             if message.target == self.start.id {
