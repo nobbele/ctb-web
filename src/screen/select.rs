@@ -67,7 +67,7 @@ impl SelectScreen {
             Rect::new(screen_width() - 400., 0., 400., 400.),
             charts_raw
                 .iter()
-                .map(|chart| (chart.0, chart.1.as_ref().map(|diff| diff.as_slice())))
+                .map(|chart| (chart.0, chart.1.as_deref()))
                 .collect::<Vec<_>>()
                 .as_slice(),
             tx.clone(),

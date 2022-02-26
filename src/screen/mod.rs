@@ -1,12 +1,9 @@
-use std::sync::Arc;
-
+use self::{select::SelectScreen, setup::SetupScreen};
 use crate::{
     cache::Cache,
     config::{get_value, KeyBinds},
     PromiseExecutor,
 };
-
-use self::{select::SelectScreen, setup::SetupScreen};
 use async_trait::async_trait;
 use gluesql::prelude::{Glue, SledStorage};
 use kira::{
@@ -17,6 +14,7 @@ use kira::{
 use macroquad::prelude::*;
 use parking_lot::Mutex;
 use ringbuffer::{ConstGenericRingBuffer, RingBuffer, RingBufferExt, RingBufferWrite};
+use std::sync::Arc;
 
 pub mod gameplay;
 pub mod result;
@@ -143,14 +141,14 @@ impl Game {
         let mut audio = AudioManager::new(AudioManagerSettings::default()).unwrap();
 
         let storage = SledStorage::new("data/doc-db").unwrap();
-        let glue = Glue::new(storage);
+        let mut glue = Glue::new(storage);
 
         /*glue.execute_async("DROP TABLE IF EXISTS 'scores'; DROP TABLE IF EXISTS 'maps'; DROP TABLE IF EXISTS 'diffs'; ")
         .await
-        .unwrap();
+        .unwrap();*/
         glue.execute_async(include_str!("../queries/initialize.sql"))
             .await
-            .unwrap();*/
+            .unwrap();
 
         let audio_cache = Cache::new("data/cache/audio");
         let image_cache = Cache::new("data/cache/image");

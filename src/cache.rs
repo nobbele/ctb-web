@@ -47,11 +47,7 @@ impl<T> Cache<T> {
             cache: parking_lot::Mutex::new(HashMap::new()),
         }
     }
-    pub async fn get<'a, F: Future<Output = T>>(
-        &'a self,
-        key: &str,
-        get: impl FnOnce() -> F,
-    ) -> Arc<T> {
+    pub async fn get<F: Future<Output = T>>(&self, key: &str, get: impl FnOnce() -> F) -> Arc<T> {
         match self.cache.lock().entry(key.to_owned()) {
             std::collections::hash_map::Entry::Occupied(o) => o.get().clone(),
             std::collections::hash_map::Entry::Vacant(e) => e.insert(Arc::new(get().await)).clone(),

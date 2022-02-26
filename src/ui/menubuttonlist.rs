@@ -162,29 +162,27 @@ impl UiElement for MenuButtonList {
                             }
                             self.selected = idx;
                             dirty = true;
-                        } else {
-                            if let Some(sub) = &button.1 {
-                                for (idx, sub_button) in sub.iter().enumerate() {
-                                    if message.target != sub_button.id {
-                                        sub_button
-                                            .tx
-                                            .send(Message {
-                                                target: sub_button.id.clone(),
-                                                data: MessageData::MenuButton(
-                                                    MenuButtonMessage::Unselected,
-                                                ),
-                                            })
-                                            .unwrap();
-                                    } else {
-                                        self.tx
-                                            .send(Message {
-                                                target: self.id.clone(),
-                                                data: MessageData::MenuButtonList(
-                                                    MenuButtonListMessage::SelectedSub(idx),
-                                                ),
-                                            })
-                                            .unwrap();
-                                    }
+                        } else if let Some(sub) = &button.1 {
+                            for (idx, sub_button) in sub.iter().enumerate() {
+                                if message.target != sub_button.id {
+                                    sub_button
+                                        .tx
+                                        .send(Message {
+                                            target: sub_button.id.clone(),
+                                            data: MessageData::MenuButton(
+                                                MenuButtonMessage::Unselected,
+                                            ),
+                                        })
+                                        .unwrap();
+                                } else {
+                                    self.tx
+                                        .send(Message {
+                                            target: self.id.clone(),
+                                            data: MessageData::MenuButtonList(
+                                                MenuButtonListMessage::SelectedSub(idx),
+                                            ),
+                                        })
+                                        .unwrap();
                                 }
                             }
                         }
