@@ -2,10 +2,10 @@ use self::{select::SelectScreen, setup::SetupScreen};
 use crate::{
     cache::Cache,
     config::{get_value, KeyBinds},
+    leaderboard::Leaderboard,
     PromiseExecutor,
 };
 use async_trait::async_trait;
-use gluesql::prelude::{Glue, SledStorage};
 use kira::{
     instance::{handle::InstanceHandle, InstanceSettings, StopInstanceSettings},
     manager::{AudioManager, AudioManagerSettings},
@@ -111,6 +111,8 @@ pub struct GameState {
     pub queued_screen: Option<Box<dyn Screen>>,
     pub audio_frame_skip: u32,
     pub binds: KeyBinds,
+
+    pub leaderboard: Leaderboard,
 }
 
 pub struct GameData {
@@ -124,7 +126,6 @@ pub struct GameData {
 
     pub state: Mutex<GameState>,
     pub exec: Mutex<PromiseExecutor>,
-    pub glue: Mutex<Glue<gluesql::sled_storage::sled::IVec, SledStorage>>,
 }
 
 pub struct Game {
@@ -140,15 +141,7 @@ impl Game {
     pub async fn new(exec: Mutex<PromiseExecutor>) -> Self {
         let mut audio = AudioManager::new(AudioManagerSettings::default()).unwrap();
 
-        let storage = SledStorage::new("data/.storage").unwrap();
-        let mut glue = Glue::new(storage);
-
-        /*glue.execute_async("DROP TABLE IF EXISTS 'scores'; DROP TABLE IF EXISTS 'maps'; DROP TABLE IF EXISTS 'diffs'; ")
-        .await
-        .unwrap();*/
-        glue.execute_async(include_str!("../queries/initialize.sql"))
-            .await
-            .unwrap();
+        let leaderboard = Leaderboard::new().await;
 
         let audio_cache = Cache::new("data/cache/audio");
         let image_cache = Cache::new("data/cache/image");
@@ -190,9 +183,9 @@ impl Game {
                     }],
                 },
                 difficulty_idx: 0,
+                leaderboard,
             }),
             exec,
-            glue: Mutex::new(glue),
         });
 
         Game {

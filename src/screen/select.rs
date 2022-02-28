@@ -9,20 +9,13 @@ use crate::{
     GameData,
 };
 use async_trait::async_trait;
-use gluesql::prelude::{Payload, Value};
 use kira::{
     instance::{InstanceLoopStart, InstanceSettings, StopInstanceSettings},
     sound::handle::SoundHandle,
 };
 use macroquad::prelude::*;
 use num_format::{Locale, ToFormattedString};
-use std::{collections::HashMap, ops::Deref, sync::Arc};
-
-#[derive(Debug, Clone)]
-struct LeaderboardEntry {
-    score: u32,
-    accuracy: f32,
-}
+use std::sync::Arc;
 
 pub struct SelectScreen {
     charts: Vec<ChartInfo>,
@@ -280,37 +273,7 @@ impl Screen for SelectScreen {
                     self.selected_difficulty = idx;
                     data.state.lock().difficulty_idx = idx;
                     let diff_id = data.state.lock().chart.difficulties[idx].id;
-                    let leaderboard = data
-                        .glue
-                        .lock()
-                        .execute_async(&format!(
-                            include_str!("../queries/local_leaderboard.sql"),
-                            diff_id
-                        ))
-                        .await
-                        .unwrap();
-                    let mut entries = Vec::new();
-                    match leaderboard {
-                        Payload::Select { labels, rows } => {
-                            for row in rows {
-                                let map = labels
-                                    .iter()
-                                    .map(Deref::deref)
-                                    .zip(row.iter().map(|col| match col {
-                                        Value::I64(v) => *v as u32,
-                                        _ => unreachable!(),
-                                    }))
-                                    .collect::<HashMap<_, _>>();
-                                let entry = LeaderboardEntry {
-                                    score: map["score"],
-                                    accuracy: map["hit_count"] as f32
-                                        / (map["hit_count"] + map["miss_count"]) as f32,
-                                };
-                                entries.push(entry);
-                            }
-                        }
-                        _ => unreachable!(),
-                    }
+                    let entries = data.state.lock().leaderboard.get_local(diff_id).await;
                     let button_title = entries
                         .iter()
                         .map(|entry| {

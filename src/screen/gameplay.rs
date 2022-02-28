@@ -1,5 +1,5 @@
 use super::{result::ResultScreen, select::SelectScreen, Screen};
-use crate::{chart::Chart, leaderboard::submit_score, score::ScoreRecorder, GameData};
+use crate::{chart::Chart, score::ScoreRecorder, GameData};
 use async_trait::async_trait;
 use kira::instance::{
     InstanceSettings, PauseInstanceSettings, ResumeInstanceSettings, StopInstanceSettings,
@@ -228,7 +228,7 @@ impl Screen for Gameplay {
             let diff_idx = data.state.lock().difficulty_idx;
             let diff_id = data.state.lock().chart.difficulties[diff_idx].id;
             let score = self.recorder.to_score(diff_id);
-            submit_score(data.clone(), &score).await;
+            data.state.lock().leaderboard.submit_score(&score).await;
             data.state.lock().queued_screen = Some(Box::new(ResultScreen::new(&score)));
         }
 
