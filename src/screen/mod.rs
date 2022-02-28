@@ -140,7 +140,7 @@ impl Game {
     pub async fn new(exec: Mutex<PromiseExecutor>) -> Self {
         let mut audio = AudioManager::new(AudioManagerSettings::default()).unwrap();
 
-        let storage = SledStorage::new("data/doc-db").unwrap();
+        let storage = SledStorage::new("data/.storage").unwrap();
         let mut glue = Glue::new(storage);
 
         /*glue.execute_async("DROP TABLE IF EXISTS 'scores'; DROP TABLE IF EXISTS 'maps'; DROP TABLE IF EXISTS 'diffs'; ")

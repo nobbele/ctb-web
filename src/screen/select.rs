@@ -11,7 +11,7 @@ use crate::{
 use async_trait::async_trait;
 use gluesql::prelude::{Payload, Value};
 use kira::{
-    instance::{InstanceSettings, StopInstanceSettings},
+    instance::{InstanceLoopStart, InstanceSettings, StopInstanceSettings},
     sound::handle::SoundHandle,
 };
 use macroquad::prelude::*;
@@ -148,8 +148,13 @@ impl Screen for SelectScreen {
                     .stop(StopInstanceSettings::new())
                     .unwrap();
                 data.state.lock().background = Some(background);
-                data.state.lock().music =
-                    sound.play(InstanceSettings::default().volume(0.5)).unwrap();
+                data.state.lock().music = sound
+                    .play(
+                        InstanceSettings::default()
+                            .volume(0.5)
+                            .loop_start(InstanceLoopStart::Custom(0.0)),
+                    )
+                    .unwrap();
 
                 self.loading_promise = None;
             }
