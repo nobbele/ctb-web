@@ -152,16 +152,15 @@ impl Screen for Gameplay {
             self.prev_time = self.time;
             self.time = data.state.lock().music.position() as f32;
         }
-
         if self.time - self.prev_time == 0. {
             let audio_frame_skip = data.state.lock().audio_frame_skip;
-            self.predicted_time += get_frame_time();
-            if audio_frame_skip != 0 {
-                self.predicted_time -= get_frame_time() / audio_frame_skip as f32;
+            if audio_frame_skip > 0 {
+                self.predicted_time += get_frame_time();
+                //self.predicted_time -= get_frame_time() / audio_frame_skip as f32;
             }
         } else {
             // Print prediction error
-            /*let audio_frame_skip = data.audio_frame_skip.get();
+            /*let audio_frame_skip = data.state.lock().audio_frame_skip;
             let prediction_delta = self.time - self.predicted_time;
             if audio_frame_skip != 0 {
                 let audio_frame_time = get_frame_time() * audio_frame_skip as f32;
