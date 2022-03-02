@@ -285,11 +285,17 @@ impl Screen for Gameplay {
 
         for fruit in &self.queued_fruits {
             let fruit = self.chart.fruits[*fruit];
+            let y = self.fruit_y(self.predicted_time, fruit.time);
+            if y + self.chart.fruit_radius * self.scale() <= 0. {
+                // queued_fruits are in spawn/hit order currently.
+                // I may change it in the future.
+                // but for now this exists to improve performance.
+                break;
+            }
             draw_texture_ex(
                 data.fruit,
                 self.playfield_to_screen_x(fruit.position) - self.chart.fruit_radius * self.scale(),
-                self.fruit_y(self.predicted_time, fruit.time)
-                    - self.chart.fruit_radius * self.scale(),
+                y - self.chart.fruit_radius * self.scale(),
                 if fruit.hyper.is_some() { RED } else { WHITE },
                 DrawTextureParams {
                     dest_size: Some(vec2(
