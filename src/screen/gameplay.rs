@@ -290,18 +290,21 @@ impl Screen for Gameplay {
                 // queued_fruits are in spawn/hit order currently.
                 // I may change it in the future.
                 // but for now this exists to improve performance.
-                break;
+                //break;
             }
+
+            let mut radius = self.chart.fruit_radius * self.scale();
+            if fruit.small {
+                radius /= 2.0;
+            }
+
             draw_texture_ex(
                 data.fruit,
-                self.playfield_to_screen_x(fruit.position) - self.chart.fruit_radius * self.scale(),
-                y - self.chart.fruit_radius * self.scale(),
+                self.playfield_to_screen_x(fruit.position) - radius,
+                y - radius,
                 if fruit.hyper.is_some() { RED } else { WHITE },
                 DrawTextureParams {
-                    dest_size: Some(vec2(
-                        self.chart.fruit_radius * 2. * self.scale(),
-                        self.chart.fruit_radius * 2. * self.scale(),
-                    )),
+                    dest_size: Some(vec2(radius * 2., radius * 2.)),
                     ..Default::default()
                 },
             );

@@ -404,6 +404,7 @@ dependencies = [
  "kira",
  "macroquad",
  "message-io",
+ "mint",
  "num-format",
  "osu-parser",
  "osu-types",
@@ -1084,9 +1085,9 @@ dependencies = [
 
 [[package]]
 name = "mint"
-version = "0.5.8"
+version = "0.5.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "162e591484b4b8fe9e1ca16ebf07ab584fdc3334508d76a788cd54d89cfc20dc"
+checksum = "e53debba6bda7a793e5f99b8dacf19e626084f525f7829104ba9898f367d85ff"
 dependencies = [
  "serde",
 ]
