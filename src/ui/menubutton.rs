@@ -1,5 +1,5 @@
 use super::{Message, MessageData, UiElement};
-use crate::GameData;
+use crate::screen::GameData;
 use macroquad::prelude::*;
 use std::sync::Arc;
 

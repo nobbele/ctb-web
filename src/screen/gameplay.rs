@@ -1,5 +1,5 @@
-use super::{result::ResultScreen, select::SelectScreen, Screen};
-use crate::{chart::Chart, score::ScoreRecorder, GameData};
+use super::{result::ResultScreen, select::SelectScreen, GameData, Screen};
+use crate::{chart::Chart, score::ScoreRecorder};
 use async_trait::async_trait;
 use kira::instance::{
     InstanceSettings, PauseInstanceSettings, ResumeInstanceSettings, StopInstanceSettings,

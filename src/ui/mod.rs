@@ -1,5 +1,6 @@
+use crate::screen::GameData;
+
 use self::{menubutton::MenuButtonMessage, menubuttonlist::MenuButtonListMessage};
-use crate::GameData;
 use macroquad::prelude::*;
 use std::sync::Arc;
 

@@ -1,17 +1,9 @@
 #![allow(clippy::eq_op)]
+pub use ctb_web::*;
 use macroquad::prelude::*;
 use parking_lot::Mutex;
 use promise::PromiseExecutor;
-use screen::{Game, GameData};
-
-pub mod cache;
-pub mod chart;
-pub mod config;
-pub mod leaderboard;
-pub mod promise;
-pub mod score;
-pub mod screen;
-pub mod ui;
+use screen::Game;
 
 #[macroquad::main(window_conf)]
 async fn main() {

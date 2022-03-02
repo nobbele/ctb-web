@@ -1,9 +1,8 @@
-use crate::{score::Score, GameData};
+use super::{select::SelectScreen, GameData, Screen};
+use crate::score::Score;
 use async_trait::async_trait;
 use macroquad::prelude::*;
 use std::sync::Arc;
-
-use super::{select::SelectScreen, Screen};
 
 pub struct ResultScreen {
     pub title: String,

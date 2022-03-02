@@ -1,4 +1,4 @@
-use super::{gameplay::Gameplay, get_charts, ChartInfo, Screen};
+use super::{gameplay::Gameplay, get_charts, ChartInfo, GameData, Screen};
 use crate::{
     promise::Promise,
     ui::{
@@ -6,7 +6,6 @@ use crate::{
         menubuttonlist::{MenuButtonList, MenuButtonListMessage},
         Message, MessageData, UiElement,
     },
-    GameData,
 };
 use async_trait::async_trait;
 use kira::{

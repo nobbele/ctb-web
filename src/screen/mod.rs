@@ -1,9 +1,10 @@
 use self::{select::SelectScreen, setup::SetupScreen};
 use crate::{
+    azusa::{Azusa, ServerMessage},
     cache::Cache,
     config::{get_value, KeyBinds},
     leaderboard::Leaderboard,
-    PromiseExecutor,
+    promise::PromiseExecutor,
 };
 use async_trait::async_trait;
 use kira::{
@@ -131,6 +132,7 @@ pub struct GameData {
 pub struct Game {
     pub data: Arc<GameData>,
     screen: Box<dyn Screen>,
+    azusa: Azusa,
 
     prev_time: f32,
     audio_frame_skip_counter: u32,
@@ -160,6 +162,8 @@ impl Game {
             left: KeyCode::A,
             dash: KeyCode::RightShift,
         });
+
+        let azusa = Azusa::new();
 
         let data = Arc::new(GameData {
             audio_cache,
@@ -195,6 +199,7 @@ impl Game {
                 Box::new(SelectScreen::new(data.clone()))
             },
             data,
+            azusa,
 
             prev_time: 0.,
             audio_frame_skip_counter: 0,
@@ -217,6 +222,13 @@ impl Game {
         self.screen.update(self.data.clone()).await;
         if let Some(queued_screen) = self.data.state.lock().queued_screen.take() {
             self.screen = queued_screen;
+        }
+
+        for msg in self.azusa.receive() {
+            match msg {
+                ServerMessage::Connected => println!("Connected!"),
+                ServerMessage::Echo(s) => println!("Azusa says '{}'", s),
+            }
         }
     }
 
