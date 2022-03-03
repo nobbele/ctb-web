@@ -1,6 +1,6 @@
 use self::{select::SelectScreen, setup::SetupScreen};
 use crate::{
-    azusa::{Azusa, ServerMessage},
+    azusa::{Azusa, ServerPacket},
     cache::Cache,
     config::{get_value, KeyBinds},
     leaderboard::Leaderboard,
@@ -163,7 +163,7 @@ impl Game {
             dash: KeyCode::RightShift,
         });
 
-        let azusa = Azusa::new();
+        let azusa = Azusa::new().await;
 
         let data = Arc::new(GameData {
             audio_cache,
@@ -226,8 +226,8 @@ impl Game {
 
         for msg in self.azusa.receive() {
             match msg {
-                ServerMessage::Connected => println!("Connected!"),
-                ServerMessage::Echo(s) => println!("Azusa says '{}'", s),
+                ServerPacket::Connected => println!("Connected!"),
+                ServerPacket::Echo(s) => println!("Azusa says '{}'", s),
             }
         }
     }
