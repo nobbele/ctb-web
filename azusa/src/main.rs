@@ -13,6 +13,7 @@ impl WsExt for ws::Sender {
 
 fn main() {
     listen("127.0.0.1:3012", |out| {
+        println!("New client!");
         out.send_packet(&ServerPacket::Connected).unwrap();
         move |msg: ws::Message| {
             let packet: ClientPacket = bincode::deserialize(msg.into_data().as_slice())?;

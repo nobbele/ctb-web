@@ -1,4 +1,3 @@
-#![allow(clippy::eq_op)]
 pub use ctb_web::*;
 use macroquad::prelude::*;
 use parking_lot::Mutex;

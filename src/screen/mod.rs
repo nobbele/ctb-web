@@ -133,7 +133,6 @@ pub struct Game {
     pub data: Arc<GameData>,
     screen: Box<dyn Screen>,
     azusa: Azusa,
-
     prev_time: f32,
     audio_frame_skip_counter: u32,
     audio_frame_skips: ConstGenericRingBuffer<u32, 4>,
@@ -200,7 +199,6 @@ impl Game {
             },
             data,
             azusa,
-
             prev_time: 0.,
             audio_frame_skip_counter: 0,
             audio_frame_skips: ConstGenericRingBuffer::new(),
@@ -226,8 +224,8 @@ impl Game {
 
         for msg in self.azusa.receive() {
             match msg {
-                ServerPacket::Connected => println!("Connected!"),
-                ServerPacket::Echo(s) => println!("Azusa says '{}'", s),
+                ServerPacket::Connected => info!("Connected to Azusa!"),
+                ServerPacket::Echo(s) => info!("Azusa says '{}'", s),
             }
         }
     }

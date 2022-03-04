@@ -156,7 +156,6 @@ impl Screen for Gameplay {
             let audio_frame_skip = data.state.lock().audio_frame_skip;
             if audio_frame_skip > 0 {
                 self.predicted_time += get_frame_time();
-                //self.predicted_time -= get_frame_time() / audio_frame_skip as f32;
             }
         } else {
             // Print prediction error
@@ -165,10 +164,10 @@ impl Screen for Gameplay {
             if audio_frame_skip != 0 {
                 let audio_frame_time = get_frame_time() * audio_frame_skip as f32;
                 let prediction_off = prediction_delta / audio_frame_time;
-                println!("Off by {:.2}%", prediction_off);
+                info!("Off by {:.2}%", prediction_off);
             }
             if prediction_delta < 0. {
-                println!(
+                info!(
                     "Overcompensated by {}ms",
                     (-prediction_delta * 1000.).round() as i32
                 );

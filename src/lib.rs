@@ -1,3 +1,6 @@
+#![feature(array_windows)]
+#![allow(clippy::eq_op)]
+
 pub mod azusa;
 pub mod cache;
 pub mod chart;

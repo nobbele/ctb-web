@@ -1,5 +1,6 @@
 use macroquad::prelude::*;
 use serde::ser::SerializeMap;
+use std::intrinsics::transmute;
 
 pub fn set_value<T: serde::Serialize>(key: &str, value: T) {
     let value = serde_json::to_value(value).unwrap();
@@ -101,15 +102,16 @@ impl<'de> serde::de::Visitor<'de> for KeyBindVisitor {
             dash: KeyCode::RightShift,
         };
         while let Some((key, value)) = map.next_entry::<_, u32>()? {
+            let value = unsafe { transmute(value) };
             match key {
                 "left" => {
-                    binds.left = KeyCode::from(value);
+                    binds.left = value;
                 }
                 "right" => {
-                    binds.right = KeyCode::from(value);
+                    binds.right = value;
                 }
                 "dash" => {
-                    binds.dash = KeyCode::from(value);
+                    binds.dash = value;
                 }
                 _ => panic!(),
             }

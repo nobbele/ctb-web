@@ -122,18 +122,17 @@ impl Chart {
             }
         }
 
-        for (idx, fruit) in fruits.iter_mut().enumerate() {
+        for idx in 0..fruits.len().saturating_sub(1) {
+            let [fruit, next_fruit]: &mut [Fruit; 2] =
+                (&mut fruits[idx..idx + 2]).try_into().unwrap();
             // If you can't get to the center of the next fruit in time, we need to give the player some extra speed.
             // TODO use same implementation as osu!catch.
-            if let Some(next_hitobject) = beatmap.hit_objects.get(idx + 1) {
-                let next_fruit = Fruit::from_hitobject(next_hitobject, false);
-                let dist = (next_fruit.position - fruit.position).abs();
-                let time = next_fruit.time - fruit.time;
-                let required_time = dist / catcher_speed(true, 1.);
-                if required_time > time {
-                    fruit.hyper = Some(required_time / time);
-                };
-            }
+            let dist = (next_fruit.position - fruit.position).abs();
+            let time = next_fruit.time - fruit.time;
+            let required_time = dist / catcher_speed(true, 1.);
+            if required_time > time {
+                fruit.hyper = Some(required_time / time);
+            };
         }
 
         Chart {
