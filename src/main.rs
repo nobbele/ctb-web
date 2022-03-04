@@ -1,8 +1,8 @@
+use ctb_web::screen::game::Game;
 pub use ctb_web::*;
 use macroquad::prelude::*;
 use parking_lot::Mutex;
 use promise::PromiseExecutor;
-use screen::Game;
 
 #[macroquad::main(window_conf)]
 async fn main() {
