@@ -4,6 +4,7 @@
 pub mod azusa;
 pub mod cache;
 pub mod chart;
+pub mod chat;
 pub mod config;
 pub mod leaderboard;
 pub mod promise;

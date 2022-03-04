@@ -1,10 +1,13 @@
 use super::{
-    select::SelectScreen, setup::SetupScreen, ChartInfo, DifficultyInfo, GameData, GameState,
-    Screen,
+    overlay::{chat::ChatOverlay, Overlay},
+    select::SelectScreen,
+    setup::SetupScreen,
+    ChartInfo, DifficultyInfo, GameData, GameState, Screen,
 };
 use crate::{
     azusa::{Azusa, ClientPacket, ServerPacket},
     cache::Cache,
+    chat::Chat,
     config::{get_value, KeyBinds},
     leaderboard::Leaderboard,
     promise::PromiseExecutor,
@@ -21,6 +24,7 @@ use std::sync::Arc;
 pub struct Game {
     pub data: Arc<GameData>,
     screen: Box<dyn Screen>,
+    overlay: Option<ChatOverlay>,
     azusa: Azusa,
     prev_time: f32,
     audio_frame_skip_counter: u32,
@@ -81,6 +85,7 @@ impl Game {
                 },
                 difficulty_idx: 0,
                 leaderboard,
+                chat: Chat::new(),
             }),
             exec,
             packet_chan: tx,
@@ -92,6 +97,7 @@ impl Game {
             } else {
                 Box::new(SelectScreen::new(data.clone()))
             },
+            overlay: None,
             data,
             azusa,
             prev_time: 0.,
@@ -115,7 +121,22 @@ impl Game {
                 self.audio_frame_skips.iter().sum::<u32>() / self.audio_frame_skips.len() as u32;
             self.audio_frame_skip_counter = 0;
         }
+
+        if is_key_pressed(KeyCode::F9) {
+            if self.overlay.is_some() {
+                println!("Closing chat overlay");
+                self.overlay = None;
+            } else {
+                println!("Opening chat overlay");
+                self.overlay = Some(ChatOverlay::new());
+            }
+        }
+
         self.screen.update(self.data.clone()).await;
+        if let Some(overlay) = &mut self.overlay {
+            overlay.update(self.data.clone()).await;
+        }
+
         if let Some(queued_screen) = self.data.state.lock().queued_screen.take() {
             self.screen = queued_screen;
         }
@@ -145,11 +166,15 @@ impl Game {
                     self.last_ping = get_time();
                     self.sent_ping = false;
                 }
+                ServerPacket::Chat(packet) => self.data.state.lock().chat.handle_packet(packet),
             }
         }
     }
 
     pub fn draw(&self) {
         self.screen.draw(self.data.clone());
+        if let Some(overlay) = &self.overlay {
+            overlay.draw(self.data.clone());
+        }
     }
 }

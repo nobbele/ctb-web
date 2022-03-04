@@ -243,14 +243,15 @@ impl Screen for SelectScreen {
                 .unwrap();
         }
 
-        if is_key_pressed(KeyCode::Enter) {
+        // Temporarily disable
+        /*if is_key_pressed(KeyCode::Enter) {
             self.tx
                 .send(Message {
                     target: self.start.id.clone(),
                     data: MessageData::MenuButton(MenuButtonMessage::Selected),
                 })
                 .unwrap();
-        }
+        }*/
 
         for message in self.rx.try_iter() {
             self.chart_list.handle_message(&message);

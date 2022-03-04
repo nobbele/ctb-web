@@ -1,5 +1,5 @@
 use crate::{
-    azusa::ClientPacket, cache::Cache, config::KeyBinds, leaderboard::Leaderboard,
+    azusa::ClientPacket, cache::Cache, chat::Chat, config::KeyBinds, leaderboard::Leaderboard,
     promise::PromiseExecutor,
 };
 use async_trait::async_trait;
@@ -10,6 +10,7 @@ use std::sync::Arc;
 
 pub mod game;
 pub mod gameplay;
+pub mod overlay;
 pub mod result;
 pub mod select;
 pub mod setup;
@@ -106,6 +107,7 @@ pub struct GameState {
     pub binds: KeyBinds,
 
     pub leaderboard: Leaderboard,
+    pub chat: Chat,
 }
 
 pub struct GameData {

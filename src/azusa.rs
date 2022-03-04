@@ -2,9 +2,12 @@ use macroquad::prelude::*;
 use quad_net::web_socket::WebSocket;
 use serde::{Deserialize, Serialize};
 
+use crate::chat::ChatMessagePacket;
+
 #[derive(Debug, Serialize, Deserialize)]
 pub enum ServerPacket {
     Echo(String),
+    Chat(ChatMessagePacket),
     Connected,
     Pong,
 }
@@ -12,6 +15,7 @@ pub enum ServerPacket {
 #[derive(Debug, Serialize, Deserialize)]
 pub enum ClientPacket {
     Echo(String),
+    Chat(String),
     Ping,
 }
 
@@ -29,7 +33,11 @@ impl Azusa {
     }
 
     pub fn receive(&mut self) -> impl Iterator<Item = ServerPacket> + '_ {
-        std::iter::from_fn(|| self.ws.try_recv()).map(|data| bincode::deserialize(&data).unwrap())
+        std::iter::from_fn(|| self.ws.try_recv())
+            .map(|data| bincode::deserialize(&data).unwrap())
+            .inspect(|packet: &ServerPacket| {
+                debug!("Got packet: '{:?}'", packet);
+            })
     }
 
     pub fn send(&self, message: &ClientPacket) {
