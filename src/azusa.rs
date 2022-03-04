@@ -6,11 +6,13 @@ use serde::{Deserialize, Serialize};
 pub enum ServerPacket {
     Echo(String),
     Connected,
+    Pong,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum ClientPacket {
     Echo(String),
+    Ping,
 }
 
 pub struct Azusa {

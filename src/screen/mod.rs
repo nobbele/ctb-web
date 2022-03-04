@@ -1,6 +1,6 @@
 use self::{select::SelectScreen, setup::SetupScreen};
 use crate::{
-    azusa::{Azusa, ServerPacket},
+    azusa::{Azusa, ClientPacket, ServerPacket},
     cache::Cache,
     config::{get_value, KeyBinds},
     leaderboard::Leaderboard,
@@ -127,6 +127,7 @@ pub struct GameData {
 
     pub state: Mutex<GameState>,
     pub exec: Mutex<PromiseExecutor>,
+    pub packet_chan: flume::Sender<ClientPacket>,
 }
 
 pub struct Game {
@@ -136,6 +137,9 @@ pub struct Game {
     prev_time: f32,
     audio_frame_skip_counter: u32,
     audio_frame_skips: ConstGenericRingBuffer<u32, 4>,
+    packet_chan: flume::Receiver<ClientPacket>,
+    last_ping: f64,
+    sent_ping: bool,
 }
 
 impl Game {
@@ -164,6 +168,8 @@ impl Game {
 
         let azusa = Azusa::new().await;
 
+        let (tx, rx) = flume::unbounded();
+
         let data = Arc::new(GameData {
             audio_cache,
             image_cache,
@@ -189,6 +195,7 @@ impl Game {
                 leaderboard,
             }),
             exec,
+            packet_chan: tx,
         });
 
         Game {
@@ -202,6 +209,9 @@ impl Game {
             prev_time: 0.,
             audio_frame_skip_counter: 0,
             audio_frame_skips: ConstGenericRingBuffer::new(),
+            packet_chan: rx,
+            last_ping: get_time(),
+            sent_ping: false,
         }
     }
 
@@ -222,10 +232,31 @@ impl Game {
             self.screen = queued_screen;
         }
 
+        for msg in self.packet_chan.drain() {
+            self.azusa.send(&msg);
+        }
+
+        let time_since_ping = get_time() - self.last_ping;
+        if time_since_ping > 15.0 && !self.sent_ping {
+            self.azusa.send(&ClientPacket::Ping);
+            self.sent_ping = true;
+        }
+        if time_since_ping > 30.0 {
+            warn!("Server didn't respond!");
+        }
+
         for msg in self.azusa.receive() {
             match msg {
-                ServerPacket::Connected => info!("Connected to Azusa!"),
-                ServerPacket::Echo(s) => info!("Azusa says '{}'", s),
+                ServerPacket::Connected => {
+                    info!("Connected to Azusa!");
+                }
+                ServerPacket::Echo(s) => {
+                    info!("Azusa says '{}'", s);
+                }
+                ServerPacket::Pong => {
+                    self.last_ping = get_time();
+                    self.sent_ping = false;
+                }
             }
         }
     }
