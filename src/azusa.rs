@@ -6,21 +6,23 @@ use crate::chat::ChatMessagePacket;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum ServerPacket {
+    Pong,
     Echo(String),
     Chat(ChatMessagePacket),
     Connected,
-    Pong,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum ClientPacket {
+    Ping,
     Echo(String),
     Chat(String),
-    Ping,
+    Login,
 }
 
 pub struct Azusa {
     ws: WebSocket,
+    connected: bool,
 }
 
 impl Azusa {
@@ -29,15 +31,28 @@ impl Azusa {
         while !ws.connected() {
             next_frame().await;
         }
-        Azusa { ws }
+        Azusa {
+            ws,
+            connected: false,
+        }
     }
 
-    pub fn receive(&mut self) -> impl Iterator<Item = ServerPacket> + '_ {
+    pub fn receive(&mut self) -> Vec<ServerPacket> {
         std::iter::from_fn(|| self.ws.try_recv())
             .map(|data| bincode::deserialize(&data).unwrap())
             .inspect(|packet: &ServerPacket| {
                 debug!("Got packet: '{:?}'", packet);
             })
+            .collect()
+    }
+
+    pub fn set_connected(&mut self, status: bool) {
+        println!("Azusa connected status: {}", status);
+        self.connected = status;
+    }
+
+    pub fn connected(&self) -> bool {
+        self.connected
     }
 
     pub fn send(&self, message: &ClientPacket) {

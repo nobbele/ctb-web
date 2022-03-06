@@ -59,6 +59,7 @@ impl Game {
         });
 
         let azusa = Azusa::new().await;
+        azusa.send(&ClientPacket::Login);
 
         let (tx, rx) = flume::unbounded();
 
@@ -150,14 +151,15 @@ impl Game {
             self.azusa.send(&ClientPacket::Ping);
             self.sent_ping = true;
         }
-        if time_since_ping > 30.0 {
-            warn!("Server didn't respond!");
+        if time_since_ping > 30.0 && self.azusa.connected() {
+            self.azusa.set_connected(false);
         }
 
         for msg in self.azusa.receive() {
             match msg {
                 ServerPacket::Connected => {
                     info!("Connected to Azusa!");
+                    self.azusa.set_connected(true);
                 }
                 ServerPacket::Echo(s) => {
                     info!("Azusa says '{}'", s);
