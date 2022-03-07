@@ -31,9 +31,9 @@ impl SetupScreen {
                     400.,
                 ),
                 &[
-                    ("Left-handed (A D RShift)", None),
-                    ("Right-handed (Left Right LShift)", None),
-                    ("Custom (TODO)", None),
+                    (&["Left-handed (A D RShift)"], None),
+                    (&["Right-handed (Left Right LShift)"], None),
+                    (&["Custom (TODO)"], None),
                 ],
                 tx,
             ),

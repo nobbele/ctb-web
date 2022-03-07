@@ -32,6 +32,7 @@ gluesql = { version = "0.10.2", default-features = false, features = ["sled-stor
 [target.'cfg(target_family = "wasm")'.dependencies]
 web-sys = { version = "0.3.56", default-features = false, features = ['Storage'] }
 
-[profile.dev]
-opt-level = 1
-debug = true
+[profile.dev.package.macroquad]
+opt-level = 3
+[profile.dev.package.kira]
+opt-level = 3

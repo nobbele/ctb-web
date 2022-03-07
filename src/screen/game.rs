@@ -156,6 +156,7 @@ impl Game {
         }
 
         for msg in self.azusa.receive() {
+            self.screen.handle_packet(self.data.clone(), &msg);
             match msg {
                 ServerPacket::Connected => {
                     info!("Connected to Azusa!");
@@ -169,6 +170,7 @@ impl Game {
                     self.sent_ping = false;
                 }
                 ServerPacket::Chat(packet) => self.data.state.lock().chat.handle_packet(packet),
+                _ => {}
             }
         }
     }

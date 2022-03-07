@@ -20,7 +20,7 @@ pub enum MenuButtonMessage {
 
 pub struct MenuButton {
     pub id: String,
-    title: String,
+    title: Vec<String>,
     rect: Rect,
     visible_rect: Rect,
     pub tx: flume::Sender<Message>,
@@ -36,7 +36,7 @@ const IDLE_COLOR: Color = Color::new(0.5, 0.5, 0.5, 1.0);
 impl MenuButton {
     pub fn new(
         id: String,
-        title: String,
+        title: Vec<String>,
         popout: Popout,
         rect: Rect,
         tx: flume::Sender<Message>,
@@ -75,14 +75,17 @@ impl UiElement for MenuButton {
                 ..Default::default()
             },
         );
-        let title_length = measure_text(&self.title, None, 36, 1.);
-        draw_text(
-            &self.title,
-            self.visible_rect.x + self.visible_rect.w / 2. - title_length.width / 2.,
-            self.visible_rect.y + self.visible_rect.h / 2. - title_length.height / 2.,
-            36.,
-            WHITE,
-        )
+        for (idx, title) in self.title.iter().enumerate() {
+            let title_length = measure_text(title, None, 36, 1.);
+            draw_text(
+                title,
+                self.visible_rect.x + self.visible_rect.w / 2. - title_length.width / 2.,
+                self.visible_rect.y + self.visible_rect.h / 2. - title_length.height / 2.
+                    + (title_length.height + 2.) * idx as f32,
+                32.,
+                WHITE,
+            );
+        }
     }
 
     fn update(&mut self, _data: Arc<GameData>) {

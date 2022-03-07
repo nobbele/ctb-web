@@ -1,5 +1,9 @@
 use crate::{
-    azusa::ClientPacket, cache::Cache, chat::Chat, config::KeyBinds, leaderboard::Leaderboard,
+    azusa::{ClientPacket, ServerPacket},
+    cache::Cache,
+    chat::Chat,
+    config::KeyBinds,
+    leaderboard::Leaderboard,
     promise::PromiseExecutor,
 };
 use async_trait::async_trait;
@@ -95,6 +99,9 @@ pub fn get_charts() -> Vec<ChartInfo> {
 pub trait Screen {
     async fn update(&mut self, data: Arc<GameData>);
     fn draw(&self, data: Arc<GameData>);
+    fn handle_packet(&mut self, data: Arc<GameData>, packet: &ServerPacket) {
+        drop((data, packet));
+    }
 }
 
 pub struct GameState {

@@ -1,7 +1,8 @@
 use crate::client::Client;
 use ctb_web::azusa::{ClientPacket, ServerPacket};
 use futures::{SinkExt, StreamExt};
-use std::{collections::HashMap, ops::DerefMut, sync::Arc, time::Duration};
+use sqlx::{postgres::PgPoolOptions, Pool, Postgres};
+use std::{collections::HashMap, env, ops::DerefMut, sync::Arc, time::Duration};
 use tokio::{net::TcpStream, sync::RwLock};
 use tokio_tungstenite::WebSocketStream;
 
@@ -17,16 +18,63 @@ pub struct App {
     tx: flume::Sender<(Target, ServerPacket)>,
     rx: flume::Receiver<(Target, ServerPacket)>,
     clients: RwLock<HashMap<String, Arc<RwLock<(Wss, Client)>>>>,
+    pub pool: Pool<Postgres>,
 }
 
 impl App {
-    pub fn new() -> &'static Self {
+    pub async fn new() -> &'static Self {
         let (tx, rx) = flume::unbounded();
+        let db_addr = env::var("DATABASE_URL").unwrap();
+        println!("Connecting to '{}'", db_addr);
+        let pool = PgPoolOptions::new()
+            .max_connections(5)
+            .connect(&db_addr)
+            .await
+            .unwrap();
+        /*sqlx::query("DROP TABLE IF EXISTS users, scores")
+        .execute(&pool)
+        .await
+        .unwrap();*/
+        sqlx::query(
+            "
+CREATE TABLE IF NOT EXISTS users (
+    user_id INT GENERATED ALWAYS AS IDENTITY NOT NULL,
+    username TEXT NOT NULL,
+    PRIMARY KEY(user_id)
+);
+        ",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "
+CREATE TABLE IF NOT EXISTS scores (
+    user_id INT NOT NULL,
+    diff_id INTEGER NOT NULL,
+    hit_count INTEGER NOT NULL,
+    miss_count INTEGER NOT NULL,
+    score INTEGER NOT NULL,
+    top_combo INTEGER NOT NULL,
+
+    CONSTRAINT fk_user
+      FOREIGN KEY(user_id)
+	  REFERENCES users(user_id)
+);
+        ",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
         let app: &'static App = Box::leak(Box::new(App {
             tx,
             rx,
             clients: RwLock::new(HashMap::new()),
+            pool,
         }));
+
+        println!("Spinning up.");
 
         tokio::task::spawn(async move {
             loop {
@@ -53,13 +101,17 @@ impl App {
                     }
                 }
                 for lock in app.clients.read().await.values() {
-                    lock.write().await.0.flush().await.unwrap();
+                    let _ = lock.write().await.0.flush().await;
                 }
                 tokio::time::sleep(Duration::from_millis(15)).await;
             }
         });
 
         app
+    }
+
+    pub fn send(&self, target: Target, packet: ServerPacket) {
+        self.tx.send((target, packet)).unwrap();
     }
 
     pub fn accept(&'static self, stream: tokio::net::TcpStream) {
@@ -94,7 +146,16 @@ impl App {
                 }
                 _ => panic!(),
             };
-            let client = Client::new(username.clone(), self.tx.clone());
+
+            let (user_id,): (i32,) =
+                sqlx::query_as("INSERT INTO users(username) VALUES ($1) RETURNING user_id")
+                    .bind(username.clone())
+                    .fetch_one(&self.pool)
+                    .await
+                    .unwrap();
+            let user_id = u32::try_from(user_id).unwrap();
+
+            let client = Client::new(username.clone(), user_id, self);
             let tup = Arc::new(RwLock::new((ws, client)));
             self.clients
                 .write()
@@ -103,7 +164,7 @@ impl App {
             self.tx
                 .send((Target::User(username.clone()), ServerPacket::Connected))
                 .unwrap();
-            println!("Client login sucessful.");
+            println!("Client login sucessful. Username: {}", username);
 
             loop {
                 let mut guard = tup.write().await;
@@ -119,7 +180,7 @@ impl App {
                         let packet: ClientPacket =
                             bincode::deserialize(msg.into_data().as_slice()).unwrap();
                         println!("Server got packet '{:?}'", packet);
-                        client.handle(packet);
+                        client.handle(packet).await;
                     }
                     Err(_) => (),
                 }

@@ -27,7 +27,8 @@ impl MenuButtonList {
         id: String,
         popout: Popout,
         rect: Rect,
-        titles: &[(&str, Option<&[&str]>)],
+        // This API is an abomination.
+        titles: &[(&[&str], Option<&[&str]>)],
         tx: flume::Sender<Message>,
     ) -> Self {
         let mut list = MenuButtonList {
@@ -40,7 +41,7 @@ impl MenuButtonList {
                     (
                         MenuButton::new(
                             id.clone(),
-                            title.to_owned(),
+                            title.iter().map(|&s| s.to_owned()).collect::<Vec<_>>(),
                             popout,
                             Rect::default(),
                             tx.clone(),
@@ -52,7 +53,7 @@ impl MenuButtonList {
                                 .map(|(idx, &diff)| {
                                     MenuButton::new(
                                         format!("{}-{}", id, idx),
-                                        diff.to_owned(),
+                                        vec![diff.to_owned()],
                                         popout,
                                         Rect::default(),
                                         tx.clone(),

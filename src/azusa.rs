@@ -2,7 +2,7 @@ use macroquad::prelude::*;
 use quad_net::web_socket::WebSocket;
 use serde::{Deserialize, Serialize};
 
-use crate::chat::ChatMessagePacket;
+use crate::{chat::ChatMessagePacket, score::Score};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum ServerPacket {
@@ -10,6 +10,7 @@ pub enum ServerPacket {
     Echo(String),
     Chat(ChatMessagePacket),
     Connected,
+    Leaderboard { diff_id: u32, scores: Vec<Score> },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -18,6 +19,8 @@ pub enum ClientPacket {
     Echo(String),
     Chat(String),
     Login,
+    Submit(Score),
+    RequestLeaderboard(u32),
 }
 
 pub struct Azusa {

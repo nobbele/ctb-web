@@ -1,5 +1,6 @@
 use super::{gameplay::Gameplay, get_charts, ChartInfo, GameData, Screen};
 use crate::{
+    azusa::{ClientPacket, ServerPacket},
     promise::Promise,
     ui::{
         menubutton::{MenuButton, MenuButtonMessage, Popout},
@@ -27,7 +28,8 @@ pub struct SelectScreen {
     rx: flume::Receiver<Message>,
     tx: flume::Sender<Message>,
     chart_list: MenuButtonList,
-    leaderboard: Option<MenuButtonList>,
+    global_lb: Option<MenuButtonList>,
+    local_lb: Option<MenuButtonList>,
     scroll_target: Option<f32>,
 
     start: MenuButton,
@@ -42,7 +44,7 @@ impl SelectScreen {
             .iter()
             .map(|chart| {
                 (
-                    chart.title.as_str(),
+                    vec![chart.title.as_str()],
                     Some(
                         chart
                             .difficulties
@@ -59,7 +61,7 @@ impl SelectScreen {
             Rect::new(screen_width() - 400., 0., 400., 400.),
             charts_raw
                 .iter()
-                .map(|chart| (chart.0, chart.1.as_deref()))
+                .map(|chart| (chart.0.as_slice(), chart.1.as_deref()))
                 .collect::<Vec<_>>()
                 .as_slice(),
             tx.clone(),
@@ -83,7 +85,7 @@ impl SelectScreen {
             chart_list,
             start: MenuButton::new(
                 "start".to_string(),
-                "Start".to_string(),
+                vec!["Start".to_string()],
                 Popout::None,
                 Rect::new(
                     screen_width() / 2. - 400. / 2.,
@@ -94,7 +96,8 @@ impl SelectScreen {
                 tx,
             ),
             loading_promise: None,
-            leaderboard: None,
+            local_lb: None,
+            global_lb: None,
             scroll_target: None,
         }
     }
@@ -256,7 +259,10 @@ impl Screen for SelectScreen {
         for message in self.rx.try_iter() {
             self.chart_list.handle_message(&message);
             self.start.handle_message(&message);
-            if let Some(leaderboard) = &mut self.leaderboard {
+            if let Some(leaderboard) = &mut self.local_lb {
+                leaderboard.handle_message(&message);
+            }
+            if let Some(leaderboard) = &mut self.global_lb {
                 leaderboard.handle_message(&message);
             }
             if message.target == self.chart_list.id {
@@ -278,22 +284,26 @@ impl Screen for SelectScreen {
                         .iter()
                         .map(|entry| {
                             (
-                                format!(
+                                vec![format!(
                                     "{} ({:.2}%)",
                                     entry.score.to_formatted_string(&Locale::en),
                                     entry.accuracy * 100.
-                                ),
+                                )],
                                 None,
                             )
                         })
                         .collect::<Vec<_>>();
-                    self.leaderboard = Some(MenuButtonList::new(
+                    let button_title = button_title
+                        .iter()
+                        .map(|t| (t.0.iter().map(|t| t.as_str()).collect::<Vec<_>>(), t.1))
+                        .collect::<Vec<_>>();
+                    self.local_lb = Some(MenuButtonList::new(
                         "leaderboard".to_owned(),
                         Popout::Towards,
                         Rect::new(5., 5., 400., 0.),
                         button_title
                             .iter()
-                            .map(|title| (title.0.as_str(), title.1))
+                            .map(|title| (title.0.as_slice(), title.1))
                             .collect::<Vec<_>>()
                             .as_slice(),
                         self.tx.clone(),
@@ -307,6 +317,11 @@ impl Screen for SelectScreen {
                         sub_button.bounds().y + sub_button.bounds().h / 2.
                             - self.chart_list.bounds().y,
                     );
+
+                    self.global_lb = None;
+                    data.packet_chan
+                        .send(ClientPacket::RequestLeaderboard(diff_id))
+                        .unwrap();
                 }
             }
             if message.target == self.start.id {
@@ -325,8 +340,11 @@ impl Screen for SelectScreen {
         }
         self.chart_list.update(data.clone());
         self.start.update(data.clone());
-        if let Some(leaderboard) = &mut self.leaderboard {
-            leaderboard.update(data);
+        if let Some(local) = &mut self.local_lb {
+            local.update(data.clone());
+        }
+        if let Some(global) = &mut self.global_lb {
+            global.update(data);
         }
     }
 
@@ -345,8 +363,11 @@ impl Screen for SelectScreen {
         }
         self.chart_list.draw(data.clone());
         self.start.draw(data.clone());
-        if let Some(leaderboard) = &self.leaderboard {
-            leaderboard.draw(data);
+        if let Some(local) = &self.local_lb {
+            local.draw(data.clone());
+        }
+        if let Some(global) = &self.global_lb {
+            global.draw(data);
         }
 
         if self.loading_promise.is_some() {
@@ -358,6 +379,56 @@ impl Screen for SelectScreen {
                 36.,
                 WHITE,
             );
+        }
+    }
+
+    fn handle_packet(&mut self, data: Arc<GameData>, packet: &ServerPacket) {
+        match packet {
+            ServerPacket::Leaderboard { diff_id, scores } => {
+                dbg!(scores);
+                let diff_idx = data.state.lock().difficulty_idx;
+                if *diff_id == data.state.lock().chart.difficulties[diff_idx].id {
+                    let button_title = scores
+                        .iter()
+                        .map(|score| {
+                            let accuracy = score.hit_count as f32
+                                / (score.hit_count + score.miss_count) as f32;
+                            (
+                                vec![
+                                    score.username.clone().unwrap(),
+                                    format!(
+                                        "{} ({:.2}%)",
+                                        score.score.to_formatted_string(&Locale::en),
+                                        accuracy * 100.
+                                    ),
+                                ],
+                                None,
+                            )
+                        })
+                        .collect::<Vec<_>>();
+                    let button_title = button_title
+                        .iter()
+                        .map(|title| {
+                            (
+                                title.0.iter().map(|t| t.as_str()).collect::<Vec<_>>(),
+                                title.1,
+                            )
+                        })
+                        .collect::<Vec<_>>();
+                    self.global_lb = Some(MenuButtonList::new(
+                        "global_leaderboard".to_owned(),
+                        Popout::Towards,
+                        Rect::new(410., 5., 400., 0.),
+                        button_title
+                            .iter()
+                            .map(|title| (title.0.as_slice(), title.1))
+                            .collect::<Vec<_>>()
+                            .as_slice(),
+                        self.tx.clone(),
+                    ));
+                }
+            }
+            _ => {}
         }
     }
 }

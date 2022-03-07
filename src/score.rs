@@ -1,4 +1,8 @@
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Score {
+    pub username: Option<String>,
     pub diff_id: u32,
     pub top_combo: u32,
     pub hit_count: u32,
@@ -89,6 +93,7 @@ impl ScoreRecorder {
 
     pub fn to_score(&self, diff_id: u32) -> Score {
         Score {
+            username: None,
             diff_id,
             top_combo: self.top_combo,
             hit_count: self.hit_count,
