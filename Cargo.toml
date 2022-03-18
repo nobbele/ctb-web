@@ -24,7 +24,6 @@ parking_lot = "0.12.0"
 slotmap = "1.0.6"
 bincode = "1.3.3"
 mint = "0.5.9"
-quad-net = { git = "https://github.com/not-fl3/quad-net", rev = "207da3a" }
 qws = "0.7.9"
 thiserror = "1.0.30"
 
@@ -35,4 +34,4 @@ gluesql = { version = "0.10.2", default-features = false, features = ["sled-stor
 web-sys = { version = "0.3.56", default-features = false, features = ['Storage'] }
 
 [profile.dev]
-opt-level = 3
+opt-level = 2
