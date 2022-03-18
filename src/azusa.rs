@@ -1,8 +1,7 @@
-use macroquad::prelude::*;
-use quad_net::web_socket::WebSocket;
-use serde::{Deserialize, Serialize};
-
+use crate::web_socket::{ConnectionStatus, WebSocket, WebSocketInterface};
 use crate::{chat::ChatMessagePacket, score::Score};
+use macroquad::prelude::*;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum ServerPacket {
@@ -21,6 +20,7 @@ pub enum ClientPacket {
     Login,
     Submit(Score),
     RequestLeaderboard(u32),
+    Goodbye,
 }
 
 pub struct Azusa {
@@ -30,10 +30,7 @@ pub struct Azusa {
 
 impl Azusa {
     pub async fn new() -> Self {
-        let ws = WebSocket::connect("ws://127.0.0.1:3012").unwrap();
-        while !ws.connected() {
-            next_frame().await;
-        }
+        let ws = WebSocket::connect("ws://127.0.0.1:3012");
         Azusa {
             ws,
             connected: false,
@@ -41,7 +38,9 @@ impl Azusa {
     }
 
     pub fn receive(&mut self) -> Vec<ServerPacket> {
-        std::iter::from_fn(|| self.ws.try_recv())
+        self.ws
+            .poll()
+            .iter()
             .map(|data| bincode::deserialize(&data).unwrap())
             .inspect(|packet: &ServerPacket| {
                 debug!("Got packet: '{:?}'", packet);
@@ -55,10 +54,16 @@ impl Azusa {
     }
 
     pub fn connected(&self) -> bool {
-        self.connected
+        self.ws.status() == ConnectionStatus::Connected
     }
 
     pub fn send(&self, message: &ClientPacket) {
-        self.ws.send_bytes(&bincode::serialize(message).unwrap());
+        self.ws.send(bincode::serialize(message).unwrap());
+    }
+}
+
+impl Drop for Azusa {
+    fn drop(&mut self) {
+        self.send(&ClientPacket::Goodbye);
     }
 }

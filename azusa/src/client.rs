@@ -108,6 +108,7 @@ impl Client {
                     ServerPacket::Leaderboard { diff_id, scores },
                 );
             }
+            ClientPacket::Goodbye => todo!(),
         }
     }
 }

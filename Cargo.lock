@@ -517,10 +517,12 @@ dependencies = [
  "osu-utils",
  "parking_lot 0.12.0",
  "quad-net",
+ "qws",
  "ringbuffer",
  "serde",
  "serde_json",
  "slotmap",
+ "thiserror",
  "web-sys",
 ]
 

@@ -110,10 +110,7 @@ impl Game {
 
     pub async fn update(&mut self) {
         let time = self.data.state.lock().music.position() as f32;
-        dbg!(self.data.state.lock().music.position());
-        dbg!(self.data.state.lock().music.position() as f32);
         let delta = time - self.prev_time;
-        dbg!(delta);
         self.prev_time = time;
         if delta == 0. {
             let avg_delta = self.audio_deltas.iter().sum::<f32>() / self.audio_deltas.len() as f32;
