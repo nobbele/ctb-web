@@ -22,7 +22,7 @@ pub fn catcher_speed(dashing: bool, hyper_multiplier: f32) -> f32 {
 
 pub struct Gameplay {
     recorder: ScoreRecorder,
-
+    //prediction_result: AllocRingBuffer<f32>,
     time: f32,
     predicted_time: f32,
     prev_time: f32,
@@ -30,6 +30,7 @@ pub struct Gameplay {
     hyper_multiplier: f32,
 
     show_debug_hitbox: bool,
+    use_predicted_time: bool,
 
     chart: Chart,
     queued_fruits: Vec<usize>,
@@ -90,8 +91,10 @@ impl Gameplay {
             queued_fruits: (0..chart.fruits.len()).collect(),
             chart,
             show_debug_hitbox: false,
+            use_predicted_time: false,
             time_countdown,
             started: false,
+            //prediction_result: AllocRingBuffer::with_capacity(32),
         }
     }
 
@@ -152,26 +155,40 @@ impl Screen for Gameplay {
             self.prev_time = self.time;
             self.time = data.state.lock().music.position() as f32;
         }
+
+        // Prediction is still a bit janky.
         if self.time - self.prev_time == 0. {
-            let audio_frame_skip = data.state.lock().audio_frame_skip;
-            if audio_frame_skip > 0 {
-                self.predicted_time += get_frame_time();
-            }
+            self.predicted_time += get_frame_time();
         } else {
             // Print prediction error
-            /*let audio_frame_skip = data.state.lock().audio_frame_skip;
+            let audio_frame_skip = data.state.lock().audio_frame_skip;
             let prediction_delta = self.time - self.predicted_time;
             if audio_frame_skip != 0 {
                 let audio_frame_time = get_frame_time() * audio_frame_skip as f32;
                 let prediction_off = prediction_delta / audio_frame_time;
-                info!("Off by {:.2}%", prediction_off);
+                info!(
+                    "[{:.2} ({:.2})] Off by {:.2}% ({:.2}ms) (Predicted: {:.2}ms, Actual: {:.2}ms) (frame skip: {})",
+                    get_time() * 1000.,
+                    get_frame_time() * audio_frame_skip as f32 * 1000.,
+                    prediction_off * 100.,
+                    prediction_delta * 1000.,
+                    self.predicted_time * 1000.,
+                    self.time * 1000.,
+                    audio_frame_skip
+                );
+                /*info!(
+                    "Off by an average of {:.1}ms",
+                    self.prediction_result.iter().sum::<f32>()
+                        / self.prediction_result.len() as f32
+                );
+                self.prediction_result.push(prediction_delta);*/
             }
             if prediction_delta < 0. {
                 info!(
                     "Overcompensated by {}ms",
                     (-prediction_delta * 1000.).round() as i32
                 );
-            }*/
+            }
             self.predicted_time = self.time;
         }
 
@@ -234,6 +251,9 @@ impl Screen for Gameplay {
         if is_key_pressed(KeyCode::O) {
             self.show_debug_hitbox = !self.show_debug_hitbox;
         }
+        if is_key_pressed(KeyCode::P) {
+            self.use_predicted_time = !self.use_predicted_time;
+        }
         if is_key_pressed(KeyCode::Escape) {
             data.state
                 .lock()
@@ -285,7 +305,14 @@ impl Screen for Gameplay {
 
         for fruit in &self.queued_fruits {
             let fruit = self.chart.fruits[*fruit];
-            let y = self.fruit_y(self.predicted_time, fruit.time);
+            let y = self.fruit_y(
+                if self.use_predicted_time {
+                    self.predicted_time
+                } else {
+                    self.time
+                },
+                fruit.time,
+            );
             if y + self.chart.fruit_radius * self.scale() <= 0. {
                 // queued_fruits are in spawn/hit order currently.
                 // I may change it in the future.

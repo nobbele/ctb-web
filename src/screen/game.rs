@@ -27,8 +27,7 @@ pub struct Game {
     overlay: Option<ChatOverlay>,
     azusa: Azusa,
     prev_time: f32,
-    audio_frame_skip_counter: u32,
-    audio_frame_skips: ConstGenericRingBuffer<u32, 4>,
+    audio_deltas: ConstGenericRingBuffer<f32, 4>,
     packet_chan: flume::Receiver<ClientPacket>,
     last_ping: f64,
     sent_ping: bool,
@@ -102,8 +101,7 @@ impl Game {
             data,
             azusa,
             prev_time: 0.,
-            audio_frame_skip_counter: 0,
-            audio_frame_skips: ConstGenericRingBuffer::new(),
+            audio_deltas: ConstGenericRingBuffer::new(),
             packet_chan: rx,
             last_ping: get_time(),
             sent_ping: false,
@@ -112,15 +110,19 @@ impl Game {
 
     pub async fn update(&mut self) {
         let time = self.data.state.lock().music.position() as f32;
+        dbg!(self.data.state.lock().music.position());
+        dbg!(self.data.state.lock().music.position() as f32);
         let delta = time - self.prev_time;
+        dbg!(delta);
         self.prev_time = time;
         if delta == 0. {
-            self.audio_frame_skip_counter += 1;
+            let avg_delta = self.audio_deltas.iter().sum::<f32>() / self.audio_deltas.len() as f32;
+            if avg_delta != 0. {
+                let frames_per_audio_frame = avg_delta / get_frame_time();
+                self.data.state.lock().audio_frame_skip = frames_per_audio_frame as u32;
+            }
         } else {
-            self.audio_frame_skips.push(self.audio_frame_skip_counter);
-            self.data.state.lock().audio_frame_skip =
-                self.audio_frame_skips.iter().sum::<u32>() / self.audio_frame_skips.len() as u32;
-            self.audio_frame_skip_counter = 0;
+            self.audio_deltas.push(delta);
         }
 
         if is_key_pressed(KeyCode::F9) {
