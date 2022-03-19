@@ -19,7 +19,7 @@ use kira::{
 use macroquad::prelude::*;
 use parking_lot::Mutex;
 use ringbuffer::{ConstGenericRingBuffer, RingBuffer, RingBufferExt, RingBufferWrite};
-use std::{str::FromStr, sync::Arc};
+use std::sync::Arc;
 
 pub struct Game {
     pub data: Arc<GameData>,
