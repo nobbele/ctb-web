@@ -91,7 +91,7 @@ impl Gameplay {
             queued_fruits: (0..chart.fruits.len()).collect(),
             chart,
             show_debug_hitbox: false,
-            use_predicted_time: false,
+            use_predicted_time: true,
             time_countdown,
             started: false,
             //prediction_result: AllocRingBuffer::with_capacity(32),
