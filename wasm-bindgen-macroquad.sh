@@ -3,12 +3,12 @@
 set -e
 
 HELP_STRING=$(cat <<- END
-	usage: build_wasm.sh PROJECT_NAME
+	usage: build_wasm.sh
 
 	Build script for combining a Macroquad project with wasm-bindgen,
 	allowing integration with the greater wasm-ecosystem.
 
-	example: ./build_wasm.sh flappy-bird
+	example: ./build_wasm.sh
 
 	This'll go through the following steps:
 
@@ -17,10 +17,6 @@ HELP_STRING=$(cat <<- END
 	    3. Run wasm-bindgen with output into the 'dist' directory.
 	    4. Apply patches to the output js file (detailed here: https://github.com/not-fl3/macroquad/issues/212#issuecomment-835276147).
         5. Generate coresponding 'index.html' file.
-
-	Required arguments:
-
-	    PROJECT_NAME            The name of the artifact/target/project
 
 	Author: Tom Solberg <me@sbg.dev>
 	Edit: Nik codes <nik.code.things@gmail.com>
@@ -58,12 +54,10 @@ do
     esac
 done
 
-
 # Restore positionals
 set -- "${POSITIONAL[@]}"
-[ $# -ne 1 ] && die "too many arguments provided"
 
-PROJECT_NAME=$1
+PROJECT_NAME="ctb-web"
 
 HTML=$(cat <<- END
 <html lang="en">
@@ -112,7 +106,7 @@ END
 )
 
 # Build
-cargo build --target wasm32-unknown-unknown  --release
+cargo build --target wasm32-unknown-unknown --release
 
 # Generate bindgen outputs
 mkdir -p dist
