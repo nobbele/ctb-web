@@ -17,7 +17,7 @@ pub enum ClientPacket {
     Ping,
     Echo(String),
     Chat(String),
-    Login,
+    Login(uuid::Uuid),
     Submit(Score),
     RequestLeaderboard(u32),
     Goodbye,

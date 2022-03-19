@@ -35,12 +35,34 @@ impl App {
         .execute(&pool)
         .await
         .unwrap();*/
+        sqlx::query(r#"CREATE EXTENSION IF NOT EXISTS "uuid-ossp";"#)
+            .execute(&pool)
+            .await
+            .unwrap();
+
         sqlx::query(
             "
 CREATE TABLE IF NOT EXISTS users (
     user_id INT GENERATED ALWAYS AS IDENTITY NOT NULL,
     username TEXT NOT NULL,
     PRIMARY KEY(user_id)
+);
+        ",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "
+CREATE TABLE IF NOT EXISTS sessions (
+    user_id INT NOT NULL,
+    token UUID DEFAULT uuid_generate_v4(),
+
+    PRIMARY KEY(token),
+
+    CONSTRAINT fk_user
+      FOREIGN KEY(user_id)
+	  REFERENCES users(user_id)
 );
         ",
         )
@@ -134,26 +156,25 @@ CREATE TABLE IF NOT EXISTS scores (
                 }
             };
             let packet: ClientPacket = bincode::deserialize(&conn_msg.into_data()).unwrap();
-            let username = match packet {
-                ClientPacket::Login => {
-                    format!(
-                        "TEMP-{}",
-                        std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .unwrap()
-                            .as_micros()
-                    )
+            let user_id = match packet {
+                ClientPacket::Login(token) => {
+                    let (user_id,): (i32,) =
+                        sqlx::query_as("SELECT user_id FROM sessions WHERE token = $1;")
+                            .bind(token)
+                            .fetch_one(&self.pool)
+                            .await
+                            .unwrap();
+                    u32::try_from(user_id).unwrap()
                 }
                 _ => panic!(),
             };
 
-            let (user_id,): (i32,) =
-                sqlx::query_as("INSERT INTO users(username) VALUES ($1) RETURNING user_id")
-                    .bind(username.clone())
+            let (username,): (String,) =
+                sqlx::query_as("SELECT username FROM users WHERE user_id = $1;")
+                    .bind(user_id)
                     .fetch_one(&self.pool)
                     .await
                     .unwrap();
-            let user_id = u32::try_from(user_id).unwrap();
 
             let client = Client::new(username.clone(), user_id, self);
             let tup = Arc::new(RwLock::new((ws, client)));

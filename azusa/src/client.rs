@@ -63,7 +63,7 @@ impl Client {
                     })),
                 );
             }
-            ClientPacket::Login => panic!("Can't login after already being logged in!"),
+            ClientPacket::Login(_) => panic!("Can't login after already being logged in!"),
             ClientPacket::Submit(score) => {
                 println!("Submitting score for {}", self.username);
                 sqlx::query("INSERT INTO scores(user_id, diff_id, hit_count, miss_count, score, top_combo) VALUES ($1, $2, $3, $4, $5, $6)")

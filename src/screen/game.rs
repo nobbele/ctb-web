@@ -19,7 +19,7 @@ use kira::{
 use macroquad::prelude::*;
 use parking_lot::Mutex;
 use ringbuffer::{ConstGenericRingBuffer, RingBuffer, RingBufferExt, RingBufferWrite};
-use std::sync::Arc;
+use std::{str::FromStr, sync::Arc};
 
 pub struct Game {
     pub data: Arc<GameData>,
@@ -50,15 +50,15 @@ impl Game {
         instance.stop(StopInstanceSettings::new()).unwrap();
 
         let first_time = get_value::<bool>("first_time").unwrap_or(true);
-
         let binds = get_value::<KeyBinds>("binds").unwrap_or(KeyBinds {
             right: KeyCode::D,
             left: KeyCode::A,
             dash: KeyCode::RightShift,
         });
+        let token = get_value::<uuid::Uuid>("token").expect("Not logged in.");
 
         let azusa = Azusa::new().await;
-        azusa.send(&ClientPacket::Login);
+        azusa.send(&ClientPacket::Login(token));
 
         let (tx, rx) = flume::unbounded();
 
