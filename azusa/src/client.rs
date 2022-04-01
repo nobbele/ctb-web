@@ -1,5 +1,5 @@
 use crate::app::{App, Target};
-use ctb_web::{
+use ctb::{
     azusa::{ClientPacket, ServerPacket},
     chat::{ChatMessage, ChatMessagePacket},
     score::Score,

@@ -1,51 +1,6 @@
-[package]
-name = "ctb-web"
-version = "0.1.0"
-edition = "2021"
-
 [workspace]
 members = [
     "azusa",
+    "website",
+    "ctb"
 ]
-
-[dependencies]
-macroquad = { version = "0.3.13", default-features = false }
-osu-types = { path = "../osu-rs/osu-types" }
-osu-parser = { path = "../osu-rs/osu-parser" }
-osu-utils = { path = "../osu-rs/osu-utils" }
-kira = { version = "0.5.3", default-features = false, features = ['wav'] }
-num-format = "0.4.0"
-async-trait = "0.1.52"
-flume = "0.10.10"
-ringbuffer = "0.8.2"
-serde = "1.0.89"
-serde_json = "1.0.78"
-parking_lot = "0.12.0"
-slotmap = "1.0.6"
-bincode = "1.3.3"
-mint = "0.5.9"
-thiserror = "1.0.30"
-uuid = { version = "0.8.2", default-features = false, features = ["serde"] }
-
-[target.'cfg(not(target_family = "wasm"))'.dependencies]
-gluesql = { version = "0.10.2", default-features = false, features = ["sled-storage"] }
-qws = "0.7.9"
-
-[target.'cfg(target_family = "wasm")'.dependencies]
-web-sys = { version = "0.3.56", default-features = false, features = [
-    "Storage",
-    "BinaryType",
-    "Blob",
-    "ErrorEvent",
-    "FileReader",
-    "MessageEvent",
-    "ProgressEvent",
-    "WebSocket",
-]}
-sapp-jsutils = "0.1.5"
-wasm-bindgen = "0.2.79"
-js-sys = "0.3.56"
-
-[profile.dev]
-opt-level = 2
-debug = true

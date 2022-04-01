@@ -1,0 +1,8 @@
+body {
+    height: 100vh;
+    color: white;
+}
+
+input:not([type="submit"]) {
+    color: black;
+}

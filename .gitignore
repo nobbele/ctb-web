@@ -1,5 +1,1 @@
-/target
-/dist
-/resources/*
-!/resources/.gitkeep
-/data
+target/
