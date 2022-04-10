@@ -4,3 +4,7 @@ members = [
     "website",
     "ctb"
 ]
+
+[profile.dev]
+opt-level = 2
+debug = true

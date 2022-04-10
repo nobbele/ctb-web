@@ -2,6 +2,7 @@ use super::{
     overlay::{chat::ChatOverlay, Overlay},
     select::SelectScreen,
     setup::SetupScreen,
+    visualizer::Visualizer,
     ChartInfo, DifficultyInfo, GameData, GameState, Screen,
 };
 use crate::{
@@ -27,7 +28,7 @@ pub struct Game {
     overlay: Option<ChatOverlay>,
     azusa: Azusa,
     prev_time: f32,
-    audio_deltas: ConstGenericRingBuffer<f32, 4>,
+    audio_deltas: ConstGenericRingBuffer<f32, 8>,
     packet_chan: flume::Receiver<ClientPacket>,
     last_ping: f64,
     sent_ping: bool,
@@ -55,10 +56,12 @@ impl Game {
             left: KeyCode::A,
             dash: KeyCode::RightShift,
         });
-        let token = get_value::<uuid::Uuid>("token").expect("Not logged in.");
+        let token = get_value::<uuid::Uuid>("token");
 
         let azusa = Azusa::new().await;
-        azusa.send(&ClientPacket::Login(token));
+        if let Some(token) = token {
+            azusa.send(&ClientPacket::Login(token));
+        }
 
         let (tx, rx) = flume::unbounded();
 
@@ -86,6 +89,9 @@ impl Game {
                 difficulty_idx: 0,
                 leaderboard,
                 chat: Chat::new(),
+
+                time: 0.,
+                predicted_time: 0.,
             }),
             exec,
             packet_chan: tx,
@@ -110,16 +116,51 @@ impl Game {
 
     pub async fn update(&mut self) {
         let time = self.data.state.lock().music.position() as f32;
+        self.data.state.lock().time = time;
+
         let delta = time - self.prev_time;
         self.prev_time = time;
+
         if delta == 0. {
             let avg_delta = self.audio_deltas.iter().sum::<f32>() / self.audio_deltas.len() as f32;
             if avg_delta != 0. {
                 let frames_per_audio_frame = avg_delta / get_frame_time();
                 self.data.state.lock().audio_frame_skip = frames_per_audio_frame as u32;
             }
+
+            self.data.state.lock().predicted_time += get_frame_time();
         } else {
+            /*
+            use ringbuffer::{RingBuffer, RingBufferExt};
+            info!(
+                "Off by an average of {:.1}ms",
+                self.prediction_result.iter().sum::<f32>() / self.prediction_result.len() as f32
+                    * 1000.
+            );*/
+            // Print prediction error
+            //let audio_frame_skip = data.state.lock().audio_frame_skip;
+            /*if audio_frame_skip != 0 {
+                let audio_frame_time = get_frame_time() * audio_frame_skip as f32;
+                let prediction_off = prediction_delta / audio_frame_time;
+                info!(
+                    "[{:.2} ({:.2})] Off by {:.2}% ({:.2}ms) (Predicted: {:.2}ms, Actual: {:.2}ms) (frame skip: {})",
+                    get_time() * 1000.,
+                    get_frame_time() * audio_frame_skip as f32 * 1000.,
+                    prediction_off * 100.,
+                    prediction_delta * 1000.,
+                    self.predicted_time * 1000.,
+                    self.time * 1000.,
+                    audio_frame_skip
+                );
+            }
+            if prediction_delta < 0. {
+                info!(
+                    "Overcompensated by {}ms",
+                    (-prediction_delta * 1000.).round() as i32
+                );
+            }*/
             self.audio_deltas.push(delta);
+            self.data.state.lock().predicted_time = time;
         }
 
         if is_key_pressed(KeyCode::F9) {
@@ -130,6 +171,10 @@ impl Game {
                 println!("Opening chat overlay");
                 self.overlay = Some(ChatOverlay::new());
             }
+        }
+
+        if is_key_pressed(KeyCode::V) {
+            self.data.state.lock().queued_screen = Some(Box::new(Visualizer::new()));
         }
 
         self.screen.update(self.data.clone()).await;

@@ -18,6 +18,7 @@ pub mod overlay;
 pub mod result;
 pub mod select;
 pub mod setup;
+pub mod visualizer;
 
 #[derive(Debug, Clone)]
 pub struct DifficultyInfo {
@@ -112,6 +113,9 @@ pub struct GameState {
     pub queued_screen: Option<Box<dyn Screen>>,
     pub audio_frame_skip: u32,
     pub binds: KeyBinds,
+
+    pub time: f32,
+    pub predicted_time: f32,
 
     pub leaderboard: Leaderboard,
     pub chat: Chat,

@@ -20,6 +20,7 @@ HELP_STRING=$(cat <<- END
 
 	Author: Tom Solberg <me@sbg.dev>
 	Edit: Nik codes <nik.code.things@gmail.com>
+    Edit: Nobbele <realnobbele@gmail.com>
 	Version: 0.2
 END
 )
@@ -57,7 +58,7 @@ done
 # Restore positionals
 set -- "${POSITIONAL[@]}"
 
-PROJECT_NAME="ctb-web"
+PROJECT_NAME="ctb"
 
 HTML=$(cat <<- END
 <html lang="en">
@@ -106,7 +107,7 @@ END
 )
 
 # Build
-cargo build --target wasm32-unknown-unknown --release
+cargo build --target wasm32-unknown-unknown --release --bin ctb
 
 # Generate bindgen outputs
 mkdir -p dist
