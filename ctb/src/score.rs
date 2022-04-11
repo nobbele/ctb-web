@@ -8,6 +8,7 @@ pub struct Score {
     pub hit_count: u32,
     pub miss_count: u32,
     pub score: u32,
+    pub passed: bool,
 }
 
 pub struct ScoreRecorder {
@@ -99,6 +100,7 @@ impl ScoreRecorder {
             hit_count: self.hit_count,
             miss_count: self.miss_count,
             score: self.score,
+            passed: self.hp > 0.5,
         }
     }
 }

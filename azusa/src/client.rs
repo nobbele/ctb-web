@@ -98,6 +98,7 @@ impl Client {
                         miss_count: miss_count.try_into().unwrap(),
                         score: score.try_into().unwrap(),
                         top_combo: top_combo.try_into().unwrap(),
+                        passed: true,
                     }
                 })
                 .fetch_all(&self.app.pool)

@@ -1,5 +1,5 @@
 use super::{game::GameMessage, select::SelectScreen, GameData, Screen};
-use crate::score::Score;
+use crate::{draw_text_centered, score::Score};
 use async_trait::async_trait;
 use macroquad::prelude::*;
 use std::sync::Arc;
@@ -13,65 +13,78 @@ pub struct ResultScreen {
     pub miss_count: u32,
     pub top_combo: u32,
     pub accuracy: f32,
+    pub passed: bool,
 }
 
 impl ResultScreen {
-    pub fn new(score: &Score) -> Self {
+    pub fn new(score: &Score, title: String, difficulty: String) -> Self {
         ResultScreen {
-            title: "TODO".to_string(),
-            difficulty: "TODO".to_string(),
+            title,
+            difficulty,
             score: score.score,
             hit_count: score.hit_count,
             miss_count: score.miss_count,
             top_combo: score.top_combo,
             accuracy: score.hit_count as f32 / (score.hit_count + score.miss_count) as f32,
+            passed: score.passed,
         }
     }
 }
 
 #[async_trait(?Send)]
 impl Screen for ResultScreen {
-    fn draw(&self, _data: Arc<GameData>) {
-        draw_text(
-            &self.title,
+    fn draw(&self, data: Arc<GameData>) {
+        if let Some(background) = data.state.lock().background {
+            draw_texture_ex(
+                background,
+                0.,
+                0.,
+                Color::new(0.5, 0.5, 0.5, 0.2),
+                DrawTextureParams {
+                    dest_size: Some(vec2(screen_width(), screen_height())),
+                    ..Default::default()
+                },
+            );
+        }
+
+        draw_text_centered(
+            &format!(
+                "{} [{}] ({})",
+                self.title,
+                self.difficulty,
+                if self.passed { "Passed" } else { "Failed" }
+            ),
             screen_width() / 2.,
             screen_height() / 2. - 100.,
-            36.,
+            36,
             WHITE,
         );
-        draw_text(
-            &self.difficulty,
-            screen_width() / 2.,
-            screen_height() / 2. - 50.,
-            36.,
-            WHITE,
-        );
-        draw_text(
+        draw_text_centered(
             &format!("{}x", self.top_combo),
             screen_width() / 2.,
             screen_height() / 2. - 10.,
-            36.,
+            36,
             WHITE,
         );
-        draw_text(
+        draw_text_centered(
             &format!("{}/{}", self.hit_count, self.miss_count),
             screen_width() / 2.,
             screen_height() / 2. + 30.,
-            36.,
+            36,
             WHITE,
         );
-        draw_text(
+        draw_text_centered(
             &format!("{}", self.score),
             screen_width() / 2.,
             screen_height() / 2. + 70.,
-            36.,
+            36,
             WHITE,
         );
-        draw_text(
+        draw_text_centered(
             &format!("{:.2}%", self.accuracy * 100.),
             screen_width() / 2.,
             screen_height() / 2. + 110.,
-            36.,
+            36,
             WHITE,
         );
     }

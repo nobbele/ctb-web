@@ -255,9 +255,11 @@ impl Screen for SelectScreen {
                 })
                 .unwrap();
         }
-        if is_key_pressed(KeyCode::Enter) {
+
+        //TODO Temporarily disabled since it messes with the chat overlay's send shortcut.
+        /*if is_key_pressed(KeyCode::Enter) {
             self.start_map(data.clone()).await;
-        }
+        }*/
 
         for message in self.rx.try_iter() {
             self.chart_list.handle_message(&message);

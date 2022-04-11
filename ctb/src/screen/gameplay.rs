@@ -141,6 +141,7 @@ impl Screen for Gameplay {
         if !self.started {
             self.prev_time = self.time;
             self.time = -self.time_countdown;
+            self.predicted_time = -self.time_countdown;
             if self.time_countdown > 0. {
                 self.time_countdown -= get_frame_time();
             } else {
@@ -204,11 +205,18 @@ impl Screen for Gameplay {
             self.queued_fruits.remove(idx);
         }
 
-        if self.recorder.hp == 0. || self.queued_fruits.is_empty() {
+        if self.queued_fruits.is_empty() {
             let diff_id = data.state.lock().difficulty().id;
             let score = self.recorder.to_score(diff_id);
-            data.state.lock().leaderboard.submit_score(&score).await;
-            data.broadcast(GameMessage::change_screen(ResultScreen::new(&score)));
+            if score.passed {
+                data.state.lock().leaderboard.submit_score(&score).await;
+            }
+
+            let map_title = data.state.lock().chart.title.clone();
+            let diff_title = data.state.lock().difficulty().name.clone();
+            data.broadcast(GameMessage::change_screen(ResultScreen::new(
+                &score, map_title, diff_title,
+            )));
             data.send_server(ClientPacket::Submit(score));
         }
 
@@ -234,7 +242,7 @@ impl Screen for Gameplay {
                 background,
                 0.,
                 0.,
-                Color::new(1., 1., 1., 0.2),
+                Color::new(0.5, 0.5, 0.5, 0.2),
                 DrawTextureParams {
                     dest_size: Some(vec2(screen_width(), screen_height())),
                     ..Default::default()
@@ -380,7 +388,7 @@ impl Screen for Gameplay {
         draw_text_centered(
             &format!("{}%", self.recorder.hp * 100.),
             screen_width() / 2.,
-            23.,
+            23.0,
             36,
             WHITE,
         );

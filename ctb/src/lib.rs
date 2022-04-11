@@ -52,7 +52,7 @@ pub fn draw_text_centered(
     macroquad::text::draw_text(
         text,
         x - measurements.width / 2.0,
-        y - measurements.height / 2.0,
+        y,
         font_size as f32,
         color,
     );

@@ -14,7 +14,7 @@ use crate::{
     promise::PromiseExecutor,
 };
 use kira::{
-    instance::{InstanceSettings, StopInstanceSettings},
+    instance::{InstanceSettings, InstanceState, StopInstanceSettings},
     manager::{AudioManager, AudioManagerSettings},
 };
 use macroquad::prelude::*;
@@ -129,12 +129,18 @@ impl Game {
 
     pub async fn update(&mut self) {
         let time = self.data.state.lock().music.position() as f32;
+        let playing = matches!(
+            self.data.state.lock().music.state(),
+            InstanceState::Playing | InstanceState::Stopping | InstanceState::Pausing(_)
+        );
         self.data.state.lock().time = time;
 
         let delta = time - self.prev_time;
         self.prev_time = time;
 
-        if delta == 0. {
+        // If there was no change in time between this and the previous frame, it means the audio took too long to report.
+        // But this only makes sense if the music is playing, otherwise it will always have 0 delta.
+        if delta == 0. && playing {
             let avg_delta = self.audio_deltas.iter().sum::<f32>() / self.audio_deltas.len() as f32;
             if avg_delta != 0. {
                 let frames_per_audio_frame = avg_delta / get_frame_time();
@@ -233,6 +239,8 @@ impl Game {
                 _ => {}
             }
         }
+
+        std::iter::from_fn(get_char_pressed).for_each(drop);
     }
 
     pub fn draw(&self) {

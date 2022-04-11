@@ -82,6 +82,7 @@ impl UiElement for MenuButton {
                 self.visible_rect.x + self.visible_rect.w / 2.,
                 self.visible_rect.y
                     + self.visible_rect.h / 2.
+                    + title_length.height / 2.
                     + (title_length.height + 2.) * idx as f32,
                 32,
                 WHITE,
