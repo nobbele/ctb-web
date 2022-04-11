@@ -1,4 +1,4 @@
-use super::{select::SelectScreen, GameData, Screen};
+use super::{game::GameMessage, select::SelectScreen, GameData, Screen};
 use crate::score::Score;
 use async_trait::async_trait;
 use macroquad::prelude::*;
@@ -78,7 +78,7 @@ impl Screen for ResultScreen {
 
     async fn update(&mut self, data: Arc<GameData>) {
         if is_key_pressed(KeyCode::Escape) {
-            data.state.lock().queued_screen = Some(Box::new(SelectScreen::new(data.clone())));
+            data.broadcast(GameMessage::change_screen(SelectScreen::new(data.clone())));
         }
     }
 }

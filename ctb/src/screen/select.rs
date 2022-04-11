@@ -1,4 +1,4 @@
-use super::{gameplay::Gameplay, get_charts, ChartInfo, GameData, Screen};
+use super::{game::GameMessage, gameplay::Gameplay, get_charts, ChartInfo, GameData, Screen};
 use crate::{
     azusa::{ClientPacket, ServerPacket},
     promise::Promise,
@@ -100,6 +100,18 @@ impl SelectScreen {
             global_lb: None,
             scroll_target: None,
         }
+    }
+
+    async fn start_map(&self, data: Arc<GameData>) {
+        let chart = &self.charts[self.selected_chart];
+        data.broadcast(GameMessage::change_screen(
+            Gameplay::new(
+                data.clone(),
+                &chart.title,
+                &chart.difficulties[self.selected_difficulty].name,
+            )
+            .await,
+        ));
     }
 }
 
@@ -230,7 +242,8 @@ impl Screen for SelectScreen {
                     )),
                 })
                 .unwrap();
-        } else if is_key_pressed(KeyCode::Up) {
+        }
+        if is_key_pressed(KeyCode::Up) {
             let len = self.chart_list.buttons[self.chart_list.selected]
                 .1
                 .as_ref()
@@ -244,6 +257,9 @@ impl Screen for SelectScreen {
                     )),
                 })
                 .unwrap();
+        }
+        if is_key_pressed(KeyCode::Enter) {
+            self.start_map(data.clone()).await;
         }
 
         // Temporarily disable
@@ -319,22 +335,12 @@ impl Screen for SelectScreen {
                     );
 
                     self.global_lb = None;
-                    data.packet_chan
-                        .send(ClientPacket::RequestLeaderboard(diff_id))
-                        .unwrap();
+                    data.send_server(ClientPacket::RequestLeaderboard(diff_id));
                 }
             }
             if message.target == self.start.id {
                 if let MessageData::MenuButton(MenuButtonMessage::Selected) = message.data {
-                    let chart = &self.charts[self.selected_chart];
-                    data.state.lock().queued_screen = Some(Box::new(
-                        Gameplay::new(
-                            data.clone(),
-                            &chart.title,
-                            &chart.difficulties[self.selected_difficulty].name,
-                        )
-                        .await,
-                    ));
+                    self.start_map(data.clone()).await;
                 }
             }
         }

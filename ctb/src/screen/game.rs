@@ -22,6 +22,16 @@ use parking_lot::Mutex;
 use ringbuffer::{ConstGenericRingBuffer, RingBuffer, RingBufferExt, RingBufferWrite};
 use std::sync::Arc;
 
+pub enum GameMessage {
+    ChangeScreen(Box<dyn Screen>),
+}
+
+impl GameMessage {
+    pub fn change_screen<S: Screen + 'static>(screen: S) -> Self {
+        GameMessage::ChangeScreen(Box::new(screen))
+    }
+}
+
 pub struct Game {
     pub data: Arc<GameData>,
     screen: Box<dyn Screen>,
@@ -29,7 +39,8 @@ pub struct Game {
     azusa: Azusa,
     prev_time: f32,
     audio_deltas: ConstGenericRingBuffer<f32, 8>,
-    packet_chan: flume::Receiver<ClientPacket>,
+    packet_rx: flume::Receiver<ClientPacket>,
+    game_rx: flume::Receiver<GameMessage>,
     last_ping: f64,
     sent_ping: bool,
 }
@@ -63,7 +74,8 @@ impl Game {
             azusa.send(&ClientPacket::Login(token));
         }
 
-        let (tx, rx) = flume::unbounded();
+        let (packet_tx, packet_rx) = flume::unbounded();
+        let (game_tx, game_rx) = flume::unbounded();
 
         let data = Arc::new(GameData {
             audio_cache,
@@ -75,7 +87,6 @@ impl Game {
             state: Mutex::new(GameState {
                 background: None,
                 music: instance,
-                queued_screen: None,
                 audio_frame_skip: 0,
                 binds,
                 chart: ChartInfo {
@@ -94,7 +105,8 @@ impl Game {
                 predicted_time: 0.,
             }),
             exec,
-            packet_chan: tx,
+            packet_tx,
+            game_tx,
         });
 
         Game {
@@ -108,7 +120,8 @@ impl Game {
             azusa,
             prev_time: 0.,
             audio_deltas: ConstGenericRingBuffer::new(),
-            packet_chan: rx,
+            packet_rx,
+            game_rx,
             last_ping: get_time(),
             sent_ping: false,
         }
@@ -174,7 +187,8 @@ impl Game {
         }
 
         if is_key_pressed(KeyCode::V) {
-            self.data.state.lock().queued_screen = Some(Box::new(Visualizer::new()));
+            self.data
+                .broadcast(GameMessage::change_screen(Visualizer::new()));
         }
 
         self.screen.update(self.data.clone()).await;
@@ -182,11 +196,13 @@ impl Game {
             overlay.update(self.data.clone()).await;
         }
 
-        if let Some(queued_screen) = self.data.state.lock().queued_screen.take() {
-            self.screen = queued_screen;
+        for msg in self.game_rx.drain() {
+            match msg {
+                GameMessage::ChangeScreen(s) => self.screen = s,
+            }
         }
 
-        for msg in self.packet_chan.drain() {
+        for msg in self.packet_rx.drain() {
             self.azusa.send(&msg);
         }
 

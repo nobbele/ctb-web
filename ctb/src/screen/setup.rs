@@ -10,7 +10,7 @@ use async_trait::async_trait;
 use macroquad::prelude::*;
 use std::sync::Arc;
 
-use super::{select::SelectScreen, GameData, Screen};
+use super::{game::GameMessage, select::SelectScreen, GameData, Screen};
 
 pub struct SetupScreen {
     binding_types: MenuButtonList,
@@ -72,10 +72,7 @@ impl Screen for SetupScreen {
                     set_value("first_time", false);
                     set_value("binds", key_binds);
                     data.state.lock().binds = key_binds;
-                    data.state
-                        .lock()
-                        .queued_screen
-                        .replace(Box::new(SelectScreen::new(data.clone())));
+                    data.broadcast(GameMessage::change_screen(SelectScreen::new(data.clone())));
                 }
             }
         }

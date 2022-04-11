@@ -12,6 +12,8 @@ use macroquad::prelude::*;
 use parking_lot::Mutex;
 use std::sync::Arc;
 
+use self::game::GameMessage;
+
 pub mod game;
 pub mod gameplay;
 pub mod overlay;
@@ -110,7 +112,6 @@ pub struct GameState {
     pub difficulty_idx: usize,
     pub music: InstanceHandle,
     pub background: Option<Texture2D>,
-    pub queued_screen: Option<Box<dyn Screen>>,
     pub audio_frame_skip: u32,
     pub binds: KeyBinds,
 
@@ -132,5 +133,16 @@ pub struct GameData {
 
     pub state: Mutex<GameState>,
     pub exec: Mutex<PromiseExecutor>,
-    pub packet_chan: flume::Sender<ClientPacket>,
+    packet_tx: flume::Sender<ClientPacket>,
+    game_tx: flume::Sender<GameMessage>,
+}
+
+impl GameData {
+    pub fn broadcast(&self, msg: GameMessage) {
+        self.game_tx.send(msg).unwrap();
+    }
+
+    pub fn send_server(&self, msg: ClientPacket) {
+        self.packet_tx.send(msg).unwrap();
+    }
 }

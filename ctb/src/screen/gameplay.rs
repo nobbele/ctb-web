@@ -1,4 +1,4 @@
-use super::{result::ResultScreen, select::SelectScreen, GameData, Screen};
+use super::{game::GameMessage, result::ResultScreen, select::SelectScreen, GameData, Screen};
 use crate::{azusa::ClientPacket, chart::Chart, score::ScoreRecorder};
 use async_trait::async_trait;
 use kira::instance::{
@@ -209,8 +209,8 @@ impl Screen for Gameplay {
             let diff_id = data.state.lock().chart.difficulties[diff_idx].id;
             let score = self.recorder.to_score(diff_id);
             data.state.lock().leaderboard.submit_score(&score).await;
-            data.state.lock().queued_screen = Some(Box::new(ResultScreen::new(&score)));
-            data.packet_chan.send(ClientPacket::Submit(score)).unwrap();
+            data.broadcast(GameMessage::change_screen(ResultScreen::new(&score)));
+            data.send_server(ClientPacket::Submit(score));
         }
 
         if is_key_pressed(KeyCode::O) {
@@ -225,7 +225,7 @@ impl Screen for Gameplay {
                 .music
                 .stop(StopInstanceSettings::new())
                 .unwrap();
-            data.state.lock().queued_screen = Some(Box::new(SelectScreen::new(data.clone())));
+            data.broadcast(GameMessage::change_screen(SelectScreen::new(data.clone())));
         }
     }
 
