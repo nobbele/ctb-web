@@ -28,32 +28,26 @@ impl MenuButtonList {
         popout: Popout,
         rect: Rect,
         // This API is an abomination.
-        titles: &[(&[&str], Option<&[&str]>)],
+        titles: Vec<(Vec<String>, Option<Vec<String>>)>,
         tx: flume::Sender<Message>,
     ) -> Self {
         let mut list = MenuButtonList {
             id: id.clone(),
             buttons: titles
-                .iter()
+                .into_iter()
                 .enumerate()
-                .map(|(idx, &(title, diffs))| {
+                .map(|(idx, (title, diffs))| {
                     let id = format!("{}-{}", &id, idx);
                     (
-                        MenuButton::new(
-                            id.clone(),
-                            title.iter().map(|&s| s.to_owned()).collect::<Vec<_>>(),
-                            popout,
-                            Rect::default(),
-                            tx.clone(),
-                        ),
+                        MenuButton::new(id.clone(), title, popout, Rect::default(), tx.clone()),
                         diffs.map(|diffs| {
                             diffs
-                                .iter()
+                                .into_iter()
                                 .enumerate()
-                                .map(|(idx, &diff)| {
+                                .map(|(idx, diff)| {
                                     MenuButton::new(
                                         format!("{}-{}", id, idx),
-                                        vec![diff.to_owned()],
+                                        vec![diff.clone()],
                                         popout,
                                         Rect::default(),
                                         tx.clone(),

@@ -1,5 +1,5 @@
 use super::{Message, MessageData, UiElement};
-use crate::screen::GameData;
+use crate::{draw_text_centered, screen::GameData};
 use macroquad::prelude::*;
 use std::sync::Arc;
 
@@ -77,12 +77,13 @@ impl UiElement for MenuButton {
         );
         for (idx, title) in self.title.iter().enumerate() {
             let title_length = measure_text(title, None, 36, 1.);
-            draw_text(
+            draw_text_centered(
                 title,
-                self.visible_rect.x + self.visible_rect.w / 2. - title_length.width / 2.,
-                self.visible_rect.y + self.visible_rect.h / 2. - title_length.height / 2.
+                self.visible_rect.x + self.visible_rect.w / 2.,
+                self.visible_rect.y
+                    + self.visible_rect.h / 2.
                     + (title_length.height + 2.) * idx as f32,
-                32.,
+                32,
                 WHITE,
             );
         }

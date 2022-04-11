@@ -40,3 +40,20 @@ pub fn delay(time: f32) -> Delay {
         target: macroquad::time::get_time() as f32 + time,
     }
 }
+
+pub fn draw_text_centered(
+    text: &str,
+    x: f32,
+    y: f32,
+    font_size: u16,
+    color: macroquad::color::Color,
+) {
+    let measurements = macroquad::text::measure_text(text, None, font_size, 1.0);
+    macroquad::text::draw_text(
+        text,
+        x - measurements.width / 2.0,
+        y - measurements.height / 2.0,
+        font_size as f32,
+        color,
+    );
+}

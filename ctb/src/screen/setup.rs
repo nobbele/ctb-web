@@ -30,10 +30,10 @@ impl SetupScreen {
                     400.,
                     400.,
                 ),
-                &[
-                    (&["Left-handed (A D RShift)"], None),
-                    (&["Right-handed (Left Right LShift)"], None),
-                    (&["Custom (TODO)"], None),
+                vec![
+                    (vec!["Left-handed (A D RShift)".into()], None),
+                    (vec!["Right-handed (Left Right LShift)".into()], None),
+                    (vec!["Custom (TODO)".into()], None),
                 ],
                 tx,
             ),

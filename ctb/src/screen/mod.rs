@@ -122,6 +122,12 @@ pub struct GameState {
     pub chat: Chat,
 }
 
+impl GameState {
+    pub fn difficulty(&self) -> &DifficultyInfo {
+        &self.chart.difficulties[self.difficulty_idx]
+    }
+}
+
 pub struct GameData {
     pub audio: Mutex<AudioManager>,
     pub catcher: Texture2D,

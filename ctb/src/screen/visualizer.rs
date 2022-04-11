@@ -2,7 +2,9 @@ use async_trait::async_trait;
 use macroquad::prelude::*;
 use std::sync::Arc;
 
-use super::{GameData, Screen};
+use crate::draw_text_centered;
+
+use super::{game::GameMessage, select::SelectScreen, GameData, Screen};
 
 pub struct Visualizer {}
 
@@ -14,7 +16,11 @@ impl Visualizer {
 
 #[async_trait(?Send)]
 impl Screen for Visualizer {
-    async fn update(&mut self, _data: Arc<GameData>) {}
+    async fn update(&mut self, data: Arc<GameData>) {
+        if is_key_pressed(KeyCode::Escape) {
+            data.broadcast(GameMessage::change_screen(SelectScreen::new(data.clone())));
+        }
+    }
 
     fn draw(&self, data: Arc<GameData>) {
         let real_time = data.state.lock().time;
@@ -23,11 +29,11 @@ impl Screen for Visualizer {
 
         let text = format!("Audio Frame Skips: {}", data.state.lock().audio_frame_skip);
         let text_measurements = measure_text(&text, None, 32, 1.);
-        draw_text(
+        draw_text_centered(
             &text,
-            screen_width() / 2. - text_measurements.width / 2.,
+            screen_width() / 2.,
             text_measurements.height + text_measurements.offset_y,
-            32.,
+            32,
             WHITE,
         );
         draw_rectangle(0., receptor_y, screen_width(), 2., PURPLE);

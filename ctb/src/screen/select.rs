@@ -1,6 +1,7 @@
 use super::{game::GameMessage, gameplay::Gameplay, get_charts, ChartInfo, GameData, Screen};
 use crate::{
     azusa::{ClientPacket, ServerPacket},
+    draw_text_centered,
     promise::Promise,
     ui::{
         menubutton::{MenuButton, MenuButtonMessage, Popout},
@@ -44,12 +45,12 @@ impl SelectScreen {
             .iter()
             .map(|chart| {
                 (
-                    vec![chart.title.as_str()],
+                    vec![chart.title.clone()],
                     Some(
                         chart
                             .difficulties
                             .iter()
-                            .map(|diff| diff.name.as_str())
+                            .map(|diff| diff.name.clone())
                             .collect::<Vec<_>>(),
                     ),
                 )
@@ -59,11 +60,7 @@ impl SelectScreen {
             "button_list".to_string(),
             Popout::Left,
             Rect::new(screen_width() - 400., 0., 400., 400.),
-            charts_raw
-                .iter()
-                .map(|chart| (chart.0.as_slice(), chart.1.as_deref()))
-                .collect::<Vec<_>>()
-                .as_slice(),
+            charts_raw,
             tx.clone(),
         );
         tx.send(Message {
@@ -262,16 +259,6 @@ impl Screen for SelectScreen {
             self.start_map(data.clone()).await;
         }
 
-        // Temporarily disable
-        /*if is_key_pressed(KeyCode::Enter) {
-            self.tx
-                .send(Message {
-                    target: self.start.id.clone(),
-                    data: MessageData::MenuButton(MenuButtonMessage::Selected),
-                })
-                .unwrap();
-        }*/
-
         for message in self.rx.try_iter() {
             self.chart_list.handle_message(&message);
             self.start.handle_message(&message);
@@ -309,19 +296,11 @@ impl Screen for SelectScreen {
                             )
                         })
                         .collect::<Vec<_>>();
-                    let button_title = button_title
-                        .iter()
-                        .map(|t| (t.0.iter().map(|t| t.as_str()).collect::<Vec<_>>(), t.1))
-                        .collect::<Vec<_>>();
                     self.local_lb = Some(MenuButtonList::new(
                         "leaderboard".to_owned(),
                         Popout::Towards,
                         Rect::new(5., 5., 400., 0.),
-                        button_title
-                            .iter()
-                            .map(|title| (title.0.as_slice(), title.1))
-                            .collect::<Vec<_>>()
-                            .as_slice(),
+                        button_title,
                         self.tx.clone(),
                     ));
 
@@ -377,12 +356,11 @@ impl Screen for SelectScreen {
         }
 
         if self.loading_promise.is_some() {
-            let loading_dim = measure_text("Loading...", None, 36, 1.);
-            draw_text(
+            draw_text_centered(
                 "Loading...",
-                screen_width() / 2. - loading_dim.width / 2.,
-                screen_height() / 2. - loading_dim.height / 2.,
-                36.,
+                screen_width() / 2.,
+                screen_height() / 2.,
+                36,
                 WHITE,
             );
         }
@@ -391,9 +369,8 @@ impl Screen for SelectScreen {
     fn handle_packet(&mut self, data: Arc<GameData>, packet: &ServerPacket) {
         match packet {
             ServerPacket::Leaderboard { diff_id, scores } => {
-                dbg!(scores);
-                let diff_idx = data.state.lock().difficulty_idx;
-                if *diff_id == data.state.lock().chart.difficulties[diff_idx].id {
+                let current_diff_id = data.state.lock().difficulty().id;
+                if *diff_id == current_diff_id {
                     let button_title = scores
                         .iter()
                         .map(|score| {
@@ -412,24 +389,11 @@ impl Screen for SelectScreen {
                             )
                         })
                         .collect::<Vec<_>>();
-                    let button_title = button_title
-                        .iter()
-                        .map(|title| {
-                            (
-                                title.0.iter().map(|t| t.as_str()).collect::<Vec<_>>(),
-                                title.1,
-                            )
-                        })
-                        .collect::<Vec<_>>();
                     self.global_lb = Some(MenuButtonList::new(
                         "global_leaderboard".to_owned(),
                         Popout::Towards,
                         Rect::new(410., 5., 400., 0.),
-                        button_title
-                            .iter()
-                            .map(|title| (title.0.as_slice(), title.1))
-                            .collect::<Vec<_>>()
-                            .as_slice(),
+                        button_title,
                         self.tx.clone(),
                     ));
                 }

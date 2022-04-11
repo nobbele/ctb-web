@@ -1,5 +1,5 @@
 use super::{game::GameMessage, result::ResultScreen, select::SelectScreen, GameData, Screen};
-use crate::{azusa::ClientPacket, chart::Chart, score::ScoreRecorder};
+use crate::{azusa::ClientPacket, chart::Chart, draw_text_centered, score::ScoreRecorder};
 use async_trait::async_trait;
 use kira::instance::{
     InstanceSettings, PauseInstanceSettings, ResumeInstanceSettings, StopInstanceSettings,
@@ -205,8 +205,7 @@ impl Screen for Gameplay {
         }
 
         if self.recorder.hp == 0. || self.queued_fruits.is_empty() {
-            let diff_idx = data.state.lock().difficulty_idx;
-            let diff_id = data.state.lock().chart.difficulties[diff_idx].id;
+            let diff_id = data.state.lock().difficulty().id;
             let score = self.recorder.to_score(diff_id);
             data.state.lock().leaderboard.submit_score(&score).await;
             data.broadcast(GameMessage::change_screen(ResultScreen::new(&score)));
@@ -378,13 +377,11 @@ impl Screen for Gameplay {
             WHITE,
         );
 
-        let text = format!("{}%", self.recorder.hp * 100.);
-        let text_dim = measure_text(&text, None, 36, 1.0);
-        draw_text(
-            &text,
-            screen_width() / 2. - text_dim.width / 2.,
+        draw_text_centered(
+            &format!("{}%", self.recorder.hp * 100.),
+            screen_width() / 2.,
             23.,
-            36.,
+            36,
             WHITE,
         );
     }
