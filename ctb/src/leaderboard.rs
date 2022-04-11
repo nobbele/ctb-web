@@ -22,9 +22,6 @@ impl Leaderboard {
         let storage = SledStorage::new("data/.storage").unwrap();
         let mut glue = Glue::new(storage);
 
-        /*glue.execute_async("DROP TABLE IF EXISTS 'scores'; DROP TABLE IF EXISTS 'maps'; DROP TABLE IF EXISTS 'diffs'; ")
-        .await
-        .unwrap();*/
         glue.execute_async(include_str!("queries/initialize.sql"))
             .await
             .unwrap();

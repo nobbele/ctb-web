@@ -31,10 +31,6 @@ impl App {
             .connect(&db_addr)
             .await
             .unwrap();
-        /*sqlx::query("DROP TABLE IF EXISTS users, scores")
-        .execute(&pool)
-        .await
-        .unwrap();*/
         sqlx::query(r#"CREATE EXTENSION IF NOT EXISTS "uuid-ossp";"#)
             .execute(&pool)
             .await
