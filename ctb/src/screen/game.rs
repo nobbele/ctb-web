@@ -11,6 +11,8 @@ use crate::{
     chat::Chat,
     config::{get_value, KeyBinds},
     leaderboard::Leaderboard,
+    log::{LogType, Logger},
+    log_to,
     promise::PromiseExecutor,
 };
 use kira::{
@@ -20,7 +22,7 @@ use kira::{
 use macroquad::prelude::*;
 use parking_lot::Mutex;
 use ringbuffer::{ConstGenericRingBuffer, RingBuffer, RingBufferExt, RingBufferWrite};
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 pub enum GameMessage {
     ChangeScreen(Box<dyn Screen>),
@@ -33,6 +35,7 @@ impl GameMessage {
 }
 
 pub struct Game {
+    pub logger: Logger,
     pub data: Arc<GameData>,
     screen: Box<dyn Screen>,
     overlay: Option<ChatOverlay>,
@@ -47,6 +50,23 @@ pub struct Game {
 
 impl Game {
     pub async fn new(exec: Mutex<PromiseExecutor>) -> Self {
+        let mut logger = Logger::new(Duration::from_secs(2));
+        let general = logger
+            .init_endpoint(LogType::General)
+            .path("data/general.log")
+            .build();
+        let network = logger
+            .init_endpoint(LogType::Network)
+            .path("data/network.log")
+            .build();
+        let audio_performance = logger
+            .init_endpoint(LogType::AudioPerformance)
+            //.path("data/audio_performance.log")
+            .print(false)
+            .build();
+
+        log_to!(general, "Welcome to CTB-Web!");
+
         let mut audio = AudioManager::new(AudioManagerSettings::default()).unwrap();
 
         let leaderboard = Leaderboard::new().await;
@@ -68,11 +88,6 @@ impl Game {
             dash: KeyCode::RightShift,
         });
         let token = get_value::<uuid::Uuid>("token");
-
-        let azusa = Azusa::new().await;
-        if let Some(token) = token {
-            azusa.send(&ClientPacket::Login(token));
-        }
 
         let (packet_tx, packet_rx) = flume::unbounded();
         let (game_tx, game_rx) = flume::unbounded();
@@ -107,9 +122,18 @@ impl Game {
             exec,
             packet_tx,
             game_tx,
+            general,
+            network,
+            audio_performance,
         });
 
+        let azusa = Azusa::new(data.clone()).await;
+        if let Some(token) = token {
+            azusa.send(&ClientPacket::Login(token));
+        }
+
         Game {
+            logger,
             screen: if first_time {
                 Box::new(SetupScreen::new())
             } else {
@@ -138,56 +162,47 @@ impl Game {
         let delta = time - self.prev_time;
         self.prev_time = time;
 
+        let avg_delta = self.audio_deltas.iter().sum::<f32>() / self.audio_deltas.len() as f32;
         // If there was no change in time between this and the previous frame, it means the audio took too long to report.
         // But this only makes sense if the music is playing, otherwise it will always have 0 delta.
-        if delta == 0. && playing {
-            let avg_delta = self.audio_deltas.iter().sum::<f32>() / self.audio_deltas.len() as f32;
-            if avg_delta != 0. {
-                let frames_per_audio_frame = avg_delta / get_frame_time();
-                self.data.state.lock().audio_frame_skip = frames_per_audio_frame as u32;
-            }
+        if playing {
+            if delta == 0. {
+                if avg_delta != 0. {
+                    let frames_per_audio_frame = avg_delta / get_frame_time();
+                    self.data.state.lock().audio_frame_skip = frames_per_audio_frame as u32;
+                }
 
-            self.data.state.lock().predicted_time += get_frame_time();
-        } else {
-            /*
-            use ringbuffer::{RingBuffer, RingBufferExt};
-            info!(
-                "Off by an average of {:.1}ms",
-                self.prediction_result.iter().sum::<f32>() / self.prediction_result.len() as f32
-                    * 1000.
-            );*/
-            // Print prediction error
-            //let audio_frame_skip = data.state.lock().audio_frame_skip;
-            /*if audio_frame_skip != 0 {
-                let audio_frame_time = get_frame_time() * audio_frame_skip as f32;
-                let prediction_off = prediction_delta / audio_frame_time;
-                info!(
-                    "[{:.2} ({:.2})] Off by {:.2}% ({:.2}ms) (Predicted: {:.2}ms, Actual: {:.2}ms) (frame skip: {})",
-                    get_time() * 1000.,
-                    get_frame_time() * audio_frame_skip as f32 * 1000.,
-                    prediction_off * 100.,
-                    prediction_delta * 1000.,
-                    self.predicted_time * 1000.,
-                    self.time * 1000.,
-                    audio_frame_skip
-                );
+                self.data.state.lock().predicted_time += get_frame_time();
+            } else {
+                let predicted_time = self.data.state.lock().predicted_time;
+                if predicted_time != time {
+                    log_to!(
+                        self.data.audio_performance,
+                        "{} by {:.2}ms (avg: {:.2}) [Skip: {}]",
+                        if predicted_time > time {
+                            "Overestimated"
+                        } else {
+                            "Underestimated"
+                        },
+                        (predicted_time - time) * 1000.,
+                        avg_delta * 1000.,
+                        self.data.state.lock().audio_frame_skip
+                    );
+                } else {
+                    log_to!(self.data.audio_performance, "Wow! Perfect!");
+                }
+
+                self.audio_deltas.push(delta);
+                self.data.state.lock().predicted_time = time;
             }
-            if prediction_delta < 0. {
-                info!(
-                    "Overcompensated by {}ms",
-                    (-prediction_delta * 1000.).round() as i32
-                );
-            }*/
-            self.audio_deltas.push(delta);
-            self.data.state.lock().predicted_time = time;
         }
 
         if is_key_pressed(KeyCode::F9) {
             if self.overlay.is_some() {
-                println!("Closing chat overlay");
+                log_to!(self.data.general, "Closing chat overlay");
                 self.overlay = None;
             } else {
-                println!("Opening chat overlay");
+                log_to!(self.data.general, "Opening chat overlay");
                 self.overlay = Some(ChatOverlay::new());
             }
         }
@@ -225,11 +240,11 @@ impl Game {
             self.screen.handle_packet(self.data.clone(), &msg);
             match msg {
                 ServerPacket::Connected => {
-                    info!("Connected to Azusa!");
+                    log_to!(self.data.network, "Connected to Azusa!");
                     self.azusa.set_connected(true);
                 }
                 ServerPacket::Echo(s) => {
-                    info!("Azusa says '{}'", s);
+                    log_to!(self.data.network, "Azusa says '{}'", s);
                 }
                 ServerPacket::Pong => {
                     self.last_ping = get_time();
@@ -241,6 +256,8 @@ impl Game {
         }
 
         std::iter::from_fn(get_char_pressed).for_each(drop);
+
+        self.logger.flush();
     }
 
     pub fn draw(&self) {

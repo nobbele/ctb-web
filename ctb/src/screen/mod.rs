@@ -4,6 +4,7 @@ use crate::{
     chat::Chat,
     config::KeyBinds,
     leaderboard::Leaderboard,
+    log::LogEndpoint,
     promise::PromiseExecutor,
 };
 use async_trait::async_trait;
@@ -133,6 +134,10 @@ pub struct GameData {
     pub catcher: Texture2D,
     pub fruit: Texture2D,
     pub button: Texture2D,
+
+    pub general: LogEndpoint,
+    pub network: LogEndpoint,
+    pub audio_performance: LogEndpoint,
 
     pub audio_cache: Cache<SoundHandle>,
     pub image_cache: Cache<Texture2D>,

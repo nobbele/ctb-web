@@ -13,6 +13,7 @@ pub mod chart;
 pub mod chat;
 pub mod config;
 pub mod leaderboard;
+pub mod log;
 pub mod promise;
 pub mod score;
 pub mod screen;

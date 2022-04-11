@@ -12,7 +12,7 @@ pub enum ConnectionStatus {
 
 pub trait WebSocketInterface {
     fn connect(addr: impl Into<String>) -> Self;
-    fn poll(&mut self) -> Vec<Vec<u8>>;
+    fn poll(&mut self) -> Result<Vec<Vec<u8>>, String>;
     fn send(&self, data: Vec<u8>);
     fn status(&self) -> ConnectionStatus;
 }

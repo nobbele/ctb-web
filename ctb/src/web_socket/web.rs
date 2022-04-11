@@ -74,14 +74,14 @@ impl WebSocketInterface for WebSocket {
         }
     }
 
-    fn poll(&mut self) -> Vec<Vec<u8>> {
+    fn poll(&mut self) -> Result<Vec<Vec<u8>>, String> {
         if self.status() == ConnectionStatus::Connected {
             for data in self.send_queue.1.drain() {
                 self.ws.send_with_u8_array(&data).unwrap();
             }
         }
 
-        self.rx.drain().collect::<Vec<_>>()
+        Ok(self.rx.drain().collect::<Vec<_>>())
     }
 
     fn send(&self, data: Vec<u8>) {

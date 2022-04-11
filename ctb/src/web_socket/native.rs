@@ -1,5 +1,3 @@
-use macroquad::prelude::*;
-
 use super::{ConnectionStatus, WebSocketInterface};
 
 enum Event {
@@ -74,7 +72,7 @@ impl WebSocketInterface for WebSocket {
         self.send_queue.0.send(data).unwrap();
     }
 
-    fn poll(&mut self) -> Vec<Vec<u8>> {
+    fn poll(&mut self) -> Result<Vec<Vec<u8>>, String> {
         match self.status() {
             ConnectionStatus::Connected => {
                 for msg in self.send_queue.1.drain() {
@@ -84,25 +82,25 @@ impl WebSocketInterface for WebSocket {
             ConnectionStatus::Error | ConnectionStatus::Disconnected => (),
         }
 
-        self.rx
-            .drain()
-            .filter_map(|ev| match ev {
+        let mut v = Vec::new();
+        for ev in self.rx.drain() {
+            match ev {
                 Event::Connected(sender) => {
                     self.sender = Some(sender);
-                    None
                 }
-                Event::Message(msg) => Some(msg.into_data()),
-                Event::Error(e) => {
-                    info!("Web Socket Error: {}", e);
-                    None
-                }
+                Event::Message(msg) => v.push(msg.into_data()),
+                Event::Error(e) => return Err(format!("Web Socket Error: {}", e)),
                 Event::Close { code, reason } => {
-                    info!("Web Socket Closed with code {:?}. Reason: {}", code, reason);
                     self.sender = None;
-                    None
+                    return Err(format!(
+                        "Web Socket Closed with code {:?}. Reason: {}",
+                        code, reason
+                    ));
                 }
-            })
-            .collect::<Vec<_>>()
+            }
+        }
+
+        Ok(v)
     }
 
     fn status(&self) -> ConnectionStatus {
