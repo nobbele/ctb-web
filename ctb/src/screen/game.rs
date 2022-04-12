@@ -9,7 +9,7 @@ use crate::{
     azusa::{Azusa, ClientPacket, ServerPacket},
     cache::Cache,
     chat::Chat,
-    config::{get_value, KeyBinds},
+    config::{get_value, set_value, KeyBinds},
     leaderboard::Leaderboard,
     log::{LogType, Logger},
     log_to,
@@ -128,8 +128,12 @@ impl Game {
         });
 
         let azusa = Azusa::new(data.clone()).await;
+
+        // TODO this has to be sent on every connect.
         if let Some(token) = token {
             azusa.send(&ClientPacket::Login(token));
+        } else {
+            set_value("token", "SET TOKEN HERE");
         }
 
         Game {
@@ -227,13 +231,15 @@ impl Game {
             self.azusa.send(&msg);
         }
 
-        let time_since_ping = get_time() - self.last_ping;
-        if time_since_ping > 15.0 && !self.sent_ping {
-            self.azusa.send(&ClientPacket::Ping);
-            self.sent_ping = true;
-        }
-        if time_since_ping > 30.0 && self.azusa.connected() {
-            self.azusa.set_connected(false);
+        if self.azusa.connected() {
+            let time_since_ping = get_time() - self.last_ping;
+            if time_since_ping > 15.0 && !self.sent_ping {
+                self.azusa.send(&ClientPacket::Ping);
+                self.sent_ping = true;
+            }
+            if time_since_ping > 30.0 && self.azusa.connected() {
+                self.azusa.set_connected(false);
+            }
         }
 
         for msg in self.azusa.receive() {

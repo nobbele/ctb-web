@@ -162,7 +162,7 @@ CREATE TABLE IF NOT EXISTS scores (
                             .unwrap();
                     u32::try_from(user_id).unwrap()
                 }
-                _ => panic!(),
+                c => panic!("Unexpected packet '{:?}'", c),
             };
 
             let (username,): (String,) =
