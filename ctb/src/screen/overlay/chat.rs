@@ -4,20 +4,20 @@ use async_trait::async_trait;
 use macroquad::prelude::*;
 use std::fmt::Write;
 
-pub struct ChatOverlay {
+pub struct Chat {
     text_buffer: String,
 }
 
-impl ChatOverlay {
+impl Chat {
     pub fn new() -> Self {
-        ChatOverlay {
+        Chat {
             text_buffer: String::new(),
         }
     }
 }
 
 #[async_trait(?Send)]
-impl Overlay for ChatOverlay {
+impl Overlay for Chat {
     async fn update(&mut self, data: SharedGameData) {
         while let Some(char) = get_char_pressed() {
             self.text_buffer.write_char(char).unwrap();

@@ -190,7 +190,7 @@ impl Screen for SelectScreen {
             self.scroll_vel -= self.scroll_vel * get_frame_time() * 5.;
         }
 
-        if is_key_pressed(KeyCode::Right) {
+        if data.is_key_pressed(KeyCode::Right) {
             self.tx
                 .send(Message {
                     target: self.chart_list.id.clone(),
@@ -199,7 +199,7 @@ impl Screen for SelectScreen {
                     )),
                 })
                 .unwrap();
-        } else if is_key_pressed(KeyCode::Left) {
+        } else if data.is_key_pressed(KeyCode::Left) {
             self.tx
                 .send(Message {
                     target: self.chart_list.id.clone(),
@@ -211,7 +211,7 @@ impl Screen for SelectScreen {
                 .unwrap();
         }
 
-        if is_key_pressed(KeyCode::Down) {
+        if data.is_key_pressed(KeyCode::Down) {
             self.tx
                 .send(Message {
                     target: self.chart_list.id.clone(),
@@ -226,7 +226,7 @@ impl Screen for SelectScreen {
                 })
                 .unwrap();
         }
-        if is_key_pressed(KeyCode::Up) {
+        if data.is_key_pressed(KeyCode::Up) {
             let len = self.chart_list.buttons[self.chart_list.selected]
                 .1
                 .as_ref()
@@ -242,10 +242,9 @@ impl Screen for SelectScreen {
                 .unwrap();
         }
 
-        //TODO Temporarily disabled since it messes with the chat overlay's send shortcut.
-        /*if is_key_pressed(KeyCode::Enter) {
+        if data.is_key_pressed(KeyCode::Enter) {
             self.start_map(data.clone()).await;
-        }*/
+        }
 
         for message in self.rx.try_iter() {
             self.chart_list.handle_message(&message);

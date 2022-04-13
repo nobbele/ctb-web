@@ -1,5 +1,5 @@
 use super::{
-    overlay::{chat::ChatOverlay, Overlay},
+    overlay::{self, Overlay, OverlayEnum},
     select::SelectScreen,
     setup::SetupScreen,
     visualizer::Visualizer,
@@ -8,7 +8,7 @@ use super::{
 use crate::{
     azusa::{Azusa, ClientPacket, ServerPacket},
     cache::Cache,
-    chat::Chat,
+    chat,
     config::{get_value, set_value, KeyBinds},
     leaderboard::Leaderboard,
     log::{LogType, Logger},
@@ -63,7 +63,7 @@ pub struct Game {
     pub logger: Logger,
     pub data: SharedGameData,
     screen: Box<dyn Screen>,
-    overlay: Option<ChatOverlay>,
+    overlay: Option<OverlayEnum>,
     azusa: Azusa,
     prev_time: f32,
     audio_deltas: ConstGenericRingBuffer<f32, 8>,
@@ -139,11 +139,12 @@ impl Game {
                 },
                 difficulty_idx: 0,
                 leaderboard,
-                chat: Chat::new(),
+                chat: chat::Chat::new(),
             }),
             time: Cell::new(0.),
             predicted_time: Cell::new(0.),
             background: Cell::new(None),
+            locked_input: Cell::new(false),
             promises: RefCell::new(PromiseExecutor::new()),
             packet_tx,
             game_tx,
@@ -230,13 +231,23 @@ impl Game {
             }
         }
 
-        if is_key_pressed(KeyCode::F9) {
-            if self.overlay.is_some() {
+        if self.azusa.connected() && is_key_pressed(KeyCode::F9) {
+            if let Some(OverlayEnum::Chat(_)) = self.overlay {
                 log_to!(self.data.general, "Closing chat overlay");
                 self.overlay = None;
             } else {
                 log_to!(self.data.general, "Opening chat overlay");
-                self.overlay = Some(ChatOverlay::new());
+                self.overlay = Some(OverlayEnum::Chat(overlay::Chat::new()));
+            }
+        }
+
+        if is_key_pressed(KeyCode::F1) {
+            if let Some(OverlayEnum::Settings(_)) = self.overlay {
+                log_to!(self.data.general, "Closing settings overlay");
+                self.overlay = None;
+            } else {
+                log_to!(self.data.general, "Opening settings overlay");
+                self.overlay = Some(OverlayEnum::Settings(overlay::Settings::new()));
             }
         }
 
@@ -245,10 +256,12 @@ impl Game {
                 .broadcast(GameMessage::change_screen(Visualizer::new()));
         }
 
-        self.screen.update(self.data.clone()).await;
         if let Some(overlay) = &mut self.overlay {
             overlay.update(self.data.clone()).await;
+            self.data.locked_input.set(true);
         }
+        self.screen.update(self.data.clone()).await;
+        self.data.locked_input.set(false);
 
         for msg in self.game_rx.drain() {
             match msg {

@@ -142,6 +142,8 @@ pub struct GameData {
     predicted_time: Cell<f32>,
     background: Cell<Option<Texture2D>>,
 
+    locked_input: Cell<bool>,
+
     state: RefCell<GameState>,
     promises: RefCell<PromiseExecutor>,
     packet_tx: flume::Sender<ClientPacket>,
@@ -181,5 +183,9 @@ impl GameData {
 
     pub fn background(&self) -> Texture2D {
         self.background.get().unwrap_or(self.default_background)
+    }
+
+    pub fn is_key_pressed(&self, key: KeyCode) -> bool {
+        !self.locked_input.get() && is_key_pressed(key)
     }
 }
