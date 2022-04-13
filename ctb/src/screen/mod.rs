@@ -149,10 +149,12 @@ pub struct GameData {
 }
 
 impl GameData {
+    // TODO Improve name.
     pub fn broadcast(&self, msg: GameMessage) {
         self.game_tx.send(msg).unwrap();
     }
 
+    // TODO Improve name.
     pub fn send_server(&self, msg: ClientPacket) {
         self.packet_tx.send(msg).unwrap();
     }

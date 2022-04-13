@@ -10,10 +10,7 @@ use crate::{
     },
 };
 use async_trait::async_trait;
-use kira::{
-    instance::{InstanceLoopStart, InstanceSettings, StopInstanceSettings},
-    sound::handle::SoundHandle,
-};
+use kira::sound::handle::SoundHandle;
 use macroquad::prelude::*;
 use num_format::{Locale, ToFormattedString};
 use std::sync::Arc;
@@ -145,19 +142,10 @@ impl Screen for SelectScreen {
         }
 
         if let Some(loading_promise) = &self.loading_promise {
-            if let Some((mut sound, background)) = data.exec.lock().try_get(loading_promise) {
-                data.state
-                    .lock()
-                    .music
-                    .stop(StopInstanceSettings::new())
-                    .unwrap();
+            if let Some((sound, background)) = data.exec.lock().try_get(loading_promise) {
                 data.state.lock().background = Some(background);
-                data.state.lock().music = sound
-                    .play(
-                        InstanceSettings::default()
-                            .volume(0.5)
-                            .loop_start(InstanceLoopStart::Custom(0.0)),
-                    )
+                data.game_tx
+                    .send(GameMessage::update_music_looped(sound))
                     .unwrap();
 
                 self.loading_promise = None;

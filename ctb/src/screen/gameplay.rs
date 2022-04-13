@@ -1,9 +1,7 @@
 use super::{game::GameMessage, result::ResultScreen, select::SelectScreen, GameData, Screen};
 use crate::{azusa::ClientPacket, chart::Chart, draw_text_centered, score::ScoreRecorder};
 use async_trait::async_trait;
-use kira::instance::{
-    InstanceSettings, PauseInstanceSettings, ResumeInstanceSettings, StopInstanceSettings,
-};
+use kira::instance::ResumeInstanceSettings;
 use macroquad::prelude::*;
 use num_format::{Locale, ToFormattedString};
 use std::{ops::Add, sync::Arc};
@@ -52,25 +50,15 @@ impl Gameplay {
                 .unwrap();
         let chart = Chart::from_beatmap(&beatmap);
 
-        let mut sound = data
+        let sound = data
             .audio_cache
             .get_sound(
                 &mut *data.audio.lock(),
                 &format!("resources/{}/audio.wav", chart_name),
             )
             .await;
-
-        data.state
-            .lock()
-            .music
-            .stop(StopInstanceSettings::new())
-            .unwrap();
-        data.state.lock().music = sound.play(InstanceSettings::default().volume(0.5)).unwrap();
-        data.state
-            .lock()
-            .music
-            .pause(PauseInstanceSettings::new())
-            .unwrap();
+        data.broadcast(GameMessage::update_music(sound));
+        data.broadcast(GameMessage::PauseMusic);
 
         let first_fruit = chart.fruits.first().unwrap();
         let min_time_required = first_fruit.position / catcher_speed(false, 1.0);
@@ -227,11 +215,6 @@ impl Screen for Gameplay {
             self.use_predicted_time = !self.use_predicted_time;
         }
         if is_key_pressed(KeyCode::Escape) {
-            data.state
-                .lock()
-                .music
-                .stop(StopInstanceSettings::new())
-                .unwrap();
             data.broadcast(GameMessage::change_screen(SelectScreen::new(data.clone())));
         }
     }

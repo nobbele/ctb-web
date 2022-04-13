@@ -16,8 +16,12 @@ use crate::{
     promise::PromiseExecutor,
 };
 use kira::{
-    instance::{InstanceSettings, InstanceState, StopInstanceSettings},
+    instance::{
+        InstanceLoopStart, InstanceSettings, InstanceState, PauseInstanceSettings,
+        StopInstanceSettings,
+    },
     manager::{AudioManager, AudioManagerSettings},
+    sound::handle::SoundHandle,
 };
 use macroquad::prelude::*;
 use parking_lot::Mutex;
@@ -26,11 +30,27 @@ use std::{sync::Arc, time::Duration};
 
 pub enum GameMessage {
     ChangeScreen(Box<dyn Screen>),
+    UpdateMusic { handle: SoundHandle, looping: bool },
+    PauseMusic,
 }
 
 impl GameMessage {
     pub fn change_screen<S: Screen + 'static>(screen: S) -> Self {
         GameMessage::ChangeScreen(Box::new(screen))
+    }
+
+    pub fn update_music(handle: SoundHandle) -> Self {
+        GameMessage::UpdateMusic {
+            handle,
+            looping: false,
+        }
+    }
+
+    pub fn update_music_looped(handle: SoundHandle) -> Self {
+        GameMessage::UpdateMusic {
+            handle,
+            looping: true,
+        }
     }
 }
 
@@ -57,7 +77,8 @@ impl Game {
             .build();
         let network = logger
             .init_endpoint(LogType::Network)
-            .path("data/network.log")
+            //.path("data/network.log")
+            .print(false)
             .build();
         let audio_performance = logger
             .init_endpoint(LogType::AudioPerformance)
@@ -78,8 +99,7 @@ impl Game {
             .get_sound(&mut audio, "resources/Kizuato/audio.wav")
             .await;
 
-        let mut instance = sound.play(InstanceSettings::default().volume(0.5)).unwrap();
-        instance.stop(StopInstanceSettings::new()).unwrap();
+        let instance = sound.play(InstanceSettings::default().volume(0.)).unwrap();
 
         let first_time = get_value::<bool>("first_time").unwrap_or(true);
         let binds = get_value::<KeyBinds>("binds").unwrap_or(KeyBinds {
@@ -223,7 +243,36 @@ impl Game {
 
         for msg in self.game_rx.drain() {
             match msg {
-                GameMessage::ChangeScreen(s) => self.screen = s,
+                GameMessage::ChangeScreen(screen) => self.screen = screen,
+                GameMessage::UpdateMusic {
+                    mut handle,
+                    looping,
+                } => {
+                    self.data
+                        .state
+                        .lock()
+                        .music
+                        .stop(StopInstanceSettings::new())
+                        .unwrap();
+                    self.data.state.lock().music = handle
+                        .play(
+                            InstanceSettings::default()
+                                .volume(0.5)
+                                .loop_start(if looping {
+                                    InstanceLoopStart::Custom(0.0)
+                                } else {
+                                    InstanceLoopStart::None
+                                }),
+                        )
+                        .unwrap();
+                }
+                GameMessage::PauseMusic => self
+                    .data
+                    .state
+                    .lock()
+                    .music
+                    .pause(PauseInstanceSettings::new())
+                    .unwrap(),
             }
         }
 
