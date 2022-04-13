@@ -11,7 +11,7 @@ pub enum ConnectionStatus {
 }
 
 pub trait WebSocketInterface {
-    fn new(data: Arc<GameData>) -> Self;
+    fn new(data: SharedGameData) -> Self;
     fn reset(&mut self);
     fn connect(&mut self, addr: &str);
     fn poll(&mut self) -> Result<Vec<Vec<u8>>, String>;
@@ -20,7 +20,6 @@ pub trait WebSocketInterface {
 }
 
 use std::{
-    sync::Arc,
     time::{Duration, Instant},
 };
 
@@ -29,10 +28,13 @@ use native::WebSocket as WebSocketImpl;
 #[cfg(target_arch = "wasm32")]
 use web::WebSocket as WebSocketImpl;
 
-use crate::{log_to, screen::GameData};
+use crate::{
+    log_to,
+    screen::{game::SharedGameData},
+};
 
 pub struct WebSocket {
-    data: Arc<GameData>,
+    data: SharedGameData,
 
     addresses: Vec<String>,
     address_index: usize,
@@ -44,7 +46,7 @@ pub struct WebSocket {
 }
 
 impl WebSocket {
-    pub fn new(data: Arc<GameData>, addresses: Vec<impl Into<String>>) -> Self {
+    pub fn new(data: SharedGameData, addresses: Vec<impl Into<String>>) -> Self {
         WebSocket {
             data: data.clone(),
 

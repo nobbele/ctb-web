@@ -38,7 +38,7 @@ impl Leaderboard {
             .unwrap();
     }
 
-    pub async fn get_local(&mut self, diff_id: u32) -> Vec<LeaderboardEntry> {
+    pub async fn query_local(&mut self, diff_id: u32) -> Vec<LeaderboardEntry> {
         let leaderboard = self
             .glue
             .execute_async(&format!(

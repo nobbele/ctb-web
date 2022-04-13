@@ -2,9 +2,9 @@ use super::{
     menubutton::{MenuButton, MenuButtonMessage, Popout},
     Message, MessageData, UiElement,
 };
-use crate::screen::GameData;
+use crate::screen::{game::SharedGameData};
 use macroquad::prelude::*;
-use std::sync::Arc;
+
 
 pub enum MenuButtonListMessage {
     Click(usize),
@@ -69,7 +69,7 @@ impl MenuButtonList {
 }
 
 impl UiElement for MenuButtonList {
-    fn draw(&self, data: Arc<GameData>) {
+    fn draw(&self, data: SharedGameData) {
         for (idx, button) in self.buttons.iter().enumerate() {
             button.0.draw(data.clone());
             if self.selected == idx {
@@ -82,7 +82,7 @@ impl UiElement for MenuButtonList {
         }
     }
 
-    fn update(&mut self, data: Arc<GameData>) {
+    fn update(&mut self, data: SharedGameData) {
         for (idx, button) in self.buttons.iter_mut().enumerate() {
             button.0.update(data.clone());
             if self.selected == idx {

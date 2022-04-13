@@ -1,10 +1,11 @@
 use crate::log_to;
-use crate::screen::GameData;
+use crate::screen::game::SharedGameData;
+
 use crate::web_socket::{ConnectionStatus, WebSocket};
 use crate::{chat::ChatMessagePacket, score::Score};
 use macroquad::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
+
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum ServerPacket {
@@ -30,11 +31,11 @@ pub struct Azusa {
     ws: WebSocket,
     connected: bool,
 
-    data: Arc<GameData>,
+    data: SharedGameData,
 }
 
 impl Azusa {
-    pub async fn new(data: Arc<GameData>) -> Self {
+    pub async fn new(data: SharedGameData) -> Self {
         let ws = WebSocket::new(data.clone(), vec!["ws://127.0.0.1:3012", "ws://azusa.null"]);
         Azusa {
             ws,

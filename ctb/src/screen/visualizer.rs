@@ -1,10 +1,13 @@
 use async_trait::async_trait;
 use macroquad::prelude::*;
-use std::sync::Arc;
 
 use crate::draw_text_centered;
 
-use super::{game::GameMessage, select::SelectScreen, GameData, Screen};
+use super::{
+    game::{GameMessage, SharedGameData},
+    select::SelectScreen,
+    Screen,
+};
 
 pub struct Visualizer {}
 
@@ -16,18 +19,19 @@ impl Visualizer {
 
 #[async_trait(?Send)]
 impl Screen for Visualizer {
-    async fn update(&mut self, data: Arc<GameData>) {
+    async fn update(&mut self, data: SharedGameData) {
         if is_key_pressed(KeyCode::Escape) {
             data.broadcast(GameMessage::change_screen(SelectScreen::new(data.clone())));
         }
     }
 
-    fn draw(&self, data: Arc<GameData>) {
-        let real_time = data.state.lock().time;
-        let predicted_time = data.state.lock().predicted_time;
+    fn draw(&self, data: SharedGameData) {
         let receptor_y = screen_height() * 2. / 3.;
 
-        let text = format!("Audio Frame Skips: {}", data.state.lock().audio_frame_skip);
+        let text = format!(
+            "Audio Frame Skips: {}",
+            data.state.borrow().audio_frame_skip
+        );
         let text_measurements = measure_text(&text, None, 32, 1.);
         draw_text_centered(
             &text,
@@ -40,11 +44,11 @@ impl Screen for Visualizer {
 
         let x = screen_width() / 3. - screen_width() / 20.;
         draw_text("Real Time", x, receptor_y - 10., 32.0, WHITE);
-        draw_with_time(x, real_time, receptor_y);
+        draw_with_time(x, data.time(), receptor_y);
 
         let x = screen_width() * 2. / 3. - screen_width() / 20.;
         draw_text("Predicted Time", x, receptor_y - 10., 32.0, WHITE);
-        draw_with_time(x, predicted_time, receptor_y);
+        draw_with_time(x, data.predicted_time(), receptor_y);
     }
 }
 

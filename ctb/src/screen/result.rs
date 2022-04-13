@@ -1,8 +1,11 @@
-use super::{game::GameMessage, select::SelectScreen, GameData, Screen};
+use super::{
+    game::{GameMessage, SharedGameData},
+    select::SelectScreen,
+    Screen,
+};
 use crate::{draw_text_centered, score::Score};
 use async_trait::async_trait;
 use macroquad::prelude::*;
-use std::sync::Arc;
 
 pub struct ResultScreen {
     pub title: String,
@@ -33,8 +36,8 @@ impl ResultScreen {
 
 #[async_trait(?Send)]
 impl Screen for ResultScreen {
-    fn draw(&self, data: Arc<GameData>) {
-        if let Some(background) = data.state.lock().background {
+    fn draw(&self, data: SharedGameData) {
+        if let Some(background) = data.state.borrow().background {
             draw_texture_ex(
                 background,
                 0.,
@@ -89,7 +92,7 @@ impl Screen for ResultScreen {
         );
     }
 
-    async fn update(&mut self, data: Arc<GameData>) {
+    async fn update(&mut self, data: SharedGameData) {
         if is_key_pressed(KeyCode::Escape) {
             data.broadcast(GameMessage::change_screen(SelectScreen::new(data.clone())));
         }

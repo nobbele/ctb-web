@@ -1,6 +1,9 @@
-use std::sync::Arc;
 
-use crate::{log_to, screen::GameData};
+
+use crate::{
+    log_to,
+    screen::{game::SharedGameData},
+};
 
 use super::{ConnectionStatus, WebSocketInterface};
 
@@ -45,7 +48,7 @@ impl qws::Handler for Client {
 }
 
 pub struct WebSocket {
-    data: Arc<GameData>,
+    data: SharedGameData,
 
     sender: Option<qws::Sender>,
     tx: flume::Sender<Event>,
@@ -56,7 +59,7 @@ pub struct WebSocket {
 }
 
 impl WebSocketInterface for WebSocket {
-    fn new(data: Arc<GameData>) -> Self {
+    fn new(data: SharedGameData) -> Self {
         let (tx, rx) = flume::unbounded();
 
         WebSocket {

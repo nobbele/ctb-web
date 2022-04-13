@@ -1,16 +1,12 @@
 use ctb::screen::game::Game;
 pub use ctb::*;
 use macroquad::prelude::*;
-use parking_lot::Mutex;
-use promise::PromiseExecutor;
 
 #[macroquad::main(window_conf)]
 async fn main() {
     println!("Starting game..");
-    let exec = Mutex::new(PromiseExecutor::new());
-    let mut game = Game::new(exec).await;
+    let mut game = Game::new().await;
     loop {
-        game.data.exec.lock().poll();
         game.update().await;
 
         clear_background(BLACK);

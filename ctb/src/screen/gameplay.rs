@@ -1,10 +1,15 @@
-use super::{game::GameMessage, result::ResultScreen, select::SelectScreen, GameData, Screen};
+use super::{
+    game::{GameMessage, SharedGameData},
+    result::ResultScreen,
+    select::SelectScreen,
+    Screen,
+};
 use crate::{azusa::ClientPacket, chart::Chart, draw_text_centered, score::ScoreRecorder};
 use async_trait::async_trait;
 use kira::instance::ResumeInstanceSettings;
 use macroquad::prelude::*;
 use num_format::{Locale, ToFormattedString};
-use std::{ops::Add, sync::Arc};
+use std::ops::Add;
 
 pub fn can_catch_fruit(catcher_hitbox: Rect, fruit_hitbox: Rect) -> bool {
     catcher_hitbox.intersect(fruit_hitbox).is_some()
@@ -40,7 +45,7 @@ pub struct Gameplay {
 }
 
 impl Gameplay {
-    pub async fn new(data: Arc<GameData>, chart_name: &str, diff: &str) -> Self {
+    pub async fn new(data: SharedGameData, chart_name: &str, diff: &str) -> Self {
         let beatmap_data = load_file(&format!("resources/{}/{}.osu", chart_name, diff))
             .await
             .unwrap();
@@ -53,7 +58,7 @@ impl Gameplay {
         let sound = data
             .audio_cache
             .get_sound(
-                &mut *data.audio.lock(),
+                &mut *data.audio.borrow_mut(),
                 &format!("resources/{}/audio.wav", chart_name),
             )
             .await;
@@ -122,8 +127,8 @@ impl Gameplay {
 
 #[async_trait(?Send)]
 impl Screen for Gameplay {
-    async fn update(&mut self, data: Arc<GameData>) {
-        let binds = data.state.lock().binds;
+    async fn update(&mut self, data: SharedGameData) {
+        let binds = data.state.borrow().binds;
         let catcher_y = self.catcher_y();
 
         if !self.started {
@@ -134,7 +139,7 @@ impl Screen for Gameplay {
                 self.time_countdown -= get_frame_time();
             } else {
                 data.state
-                    .lock()
+                    .borrow_mut()
                     .music
                     .resume(ResumeInstanceSettings::new())
                     .unwrap();
@@ -142,8 +147,8 @@ impl Screen for Gameplay {
             }
         } else {
             self.prev_time = self.time;
-            self.time = data.state.lock().time;
-            self.predicted_time = data.state.lock().predicted_time;
+            self.time = data.time();
+            self.predicted_time = data.predicted_time();
         }
 
         self.position = self
@@ -194,14 +199,18 @@ impl Screen for Gameplay {
         }
 
         if self.queued_fruits.is_empty() {
-            let diff_id = data.state.lock().difficulty().id;
+            let diff_id = data.state.borrow().difficulty().id;
             let score = self.recorder.to_score(diff_id);
             if score.passed {
-                data.state.lock().leaderboard.submit_score(&score).await;
+                data.state
+                    .borrow_mut()
+                    .leaderboard
+                    .submit_score(&score)
+                    .await;
             }
 
-            let map_title = data.state.lock().chart.title.clone();
-            let diff_title = data.state.lock().difficulty().name.clone();
+            let map_title = data.state.borrow().chart.title.clone();
+            let diff_title = data.state.borrow().difficulty().name.clone();
             data.broadcast(GameMessage::change_screen(ResultScreen::new(
                 &score, map_title, diff_title,
             )));
@@ -219,8 +228,8 @@ impl Screen for Gameplay {
         }
     }
 
-    fn draw(&self, data: Arc<GameData>) {
-        if let Some(background) = data.state.lock().background {
+    fn draw(&self, data: SharedGameData) {
+        if let Some(background) = data.state.borrow().background {
             draw_texture_ex(
                 background,
                 0.,

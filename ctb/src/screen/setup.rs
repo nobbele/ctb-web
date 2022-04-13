@@ -8,9 +8,12 @@ use crate::{
 };
 use async_trait::async_trait;
 use macroquad::prelude::*;
-use std::sync::Arc;
 
-use super::{game::GameMessage, select::SelectScreen, GameData, Screen};
+use super::{
+    game::{GameMessage, SharedGameData},
+    select::SelectScreen,
+    Screen,
+};
 
 pub struct SetupScreen {
     binding_types: MenuButtonList,
@@ -44,11 +47,11 @@ impl SetupScreen {
 
 #[async_trait(?Send)]
 impl Screen for SetupScreen {
-    fn draw(&self, data: Arc<GameData>) {
+    fn draw(&self, data: SharedGameData) {
         self.binding_types.draw(data);
     }
 
-    async fn update(&mut self, data: Arc<GameData>) {
+    async fn update(&mut self, data: SharedGameData) {
         self.binding_types.update(data.clone());
         for message in self.rx.drain() {
             self.binding_types.handle_message(&message);
@@ -71,7 +74,7 @@ impl Screen for SetupScreen {
                     };
                     set_value("first_time", false);
                     set_value("binds", key_binds);
-                    data.state.lock().binds = key_binds;
+                    data.state.borrow_mut().binds = key_binds;
                     data.broadcast(GameMessage::change_screen(SelectScreen::new(data.clone())));
                 }
             }

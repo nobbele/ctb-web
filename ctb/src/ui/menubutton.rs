@@ -1,7 +1,10 @@
 use super::{Message, MessageData, UiElement};
-use crate::{draw_text_centered, screen::GameData};
+use crate::{
+    draw_text_centered,
+    screen::{game::SharedGameData},
+};
 use macroquad::prelude::*;
-use std::sync::Arc;
+
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Popout {
@@ -58,7 +61,7 @@ impl MenuButton {
 }
 
 impl UiElement for MenuButton {
-    fn draw(&self, data: Arc<GameData>) {
+    fn draw(&self, data: SharedGameData) {
         draw_texture_ex(
             data.button,
             self.visible_rect.x,
@@ -90,7 +93,7 @@ impl UiElement for MenuButton {
         }
     }
 
-    fn update(&mut self, _data: Arc<GameData>) {
+    fn update(&mut self, _data: SharedGameData) {
         if self.visible_rect.contains(mouse_position().into()) {
             if !self.hovered {
                 self.tx

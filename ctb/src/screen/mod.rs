@@ -10,10 +10,9 @@ use crate::{
 use async_trait::async_trait;
 use kira::{instance::handle::InstanceHandle, manager::AudioManager, sound::handle::SoundHandle};
 use macroquad::prelude::*;
-use parking_lot::Mutex;
-use std::sync::Arc;
+use std::cell::{Cell, RefCell};
 
-use self::game::GameMessage;
+use self::game::{GameMessage, SharedGameData};
 
 pub mod game;
 pub mod gameplay;
@@ -101,9 +100,9 @@ pub fn get_charts() -> Vec<ChartInfo> {
 
 #[async_trait(?Send)]
 pub trait Screen {
-    async fn update(&mut self, data: Arc<GameData>);
-    fn draw(&self, data: Arc<GameData>);
-    fn handle_packet(&mut self, data: Arc<GameData>, packet: &ServerPacket) {
+    async fn update(&mut self, data: SharedGameData);
+    fn draw(&self, data: SharedGameData);
+    fn handle_packet(&mut self, data: SharedGameData, packet: &ServerPacket) {
         drop((data, packet));
     }
 }
@@ -116,9 +115,6 @@ pub struct GameState {
     pub audio_frame_skip: u32,
     pub binds: KeyBinds,
 
-    pub time: f32,
-    pub predicted_time: f32,
-
     pub leaderboard: Leaderboard,
     pub chat: Chat,
 }
@@ -130,7 +126,7 @@ impl GameState {
 }
 
 pub struct GameData {
-    pub audio: Mutex<AudioManager>,
+    pub audio: RefCell<AudioManager>,
     pub catcher: Texture2D,
     pub fruit: Texture2D,
     pub button: Texture2D,
@@ -142,8 +138,11 @@ pub struct GameData {
     pub audio_cache: Cache<SoundHandle>,
     pub image_cache: Cache<Texture2D>,
 
-    pub state: Mutex<GameState>,
-    pub exec: Mutex<PromiseExecutor>,
+    time: Cell<f32>,
+    predicted_time: Cell<f32>,
+
+    pub state: RefCell<GameState>,
+    pub exec: RefCell<PromiseExecutor>,
     packet_tx: flume::Sender<ClientPacket>,
     game_tx: flume::Sender<GameMessage>,
 }
@@ -157,5 +156,13 @@ impl GameData {
     // TODO Improve name.
     pub fn send_server(&self, msg: ClientPacket) {
         self.packet_tx.send(msg).unwrap();
+    }
+
+    pub fn time(&self) -> f32 {
+        self.time.get()
+    }
+
+    pub fn predicted_time(&self) -> f32 {
+        self.predicted_time.get()
     }
 }

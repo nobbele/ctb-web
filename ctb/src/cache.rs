@@ -4,6 +4,7 @@ use kira::{
 };
 use macroquad::prelude::*;
 use std::{
+    cell::RefCell,
     collections::HashMap,
     future::Future,
     io::{Cursor, Read},
@@ -37,18 +38,18 @@ fn cache_to_file<R: Read>(key: &str, get: impl Fn() -> R) -> impl Read {
 pub struct Cache<T> {
     #[allow(dead_code)]
     base_path: PathBuf,
-    cache: parking_lot::Mutex<HashMap<String, Arc<T>>>,
+    cache: RefCell<HashMap<String, Arc<T>>>,
 }
 
 impl<T> Cache<T> {
     pub fn new(base_path: impl Into<PathBuf>) -> Self {
         Cache {
             base_path: base_path.into(),
-            cache: parking_lot::Mutex::new(HashMap::new()),
+            cache: RefCell::new(HashMap::new()),
         }
     }
     pub async fn get<F: Future<Output = T>>(&self, key: &str, get: impl FnOnce() -> F) -> Arc<T> {
-        match self.cache.lock().entry(key.to_owned()) {
+        match self.cache.borrow_mut().entry(key.to_owned()) {
             std::collections::hash_map::Entry::Occupied(o) => o.get().clone(),
             std::collections::hash_map::Entry::Vacant(e) => e.insert(Arc::new(get().await)).clone(),
         }

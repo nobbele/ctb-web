@@ -1,8 +1,8 @@
 use super::Overlay;
-use crate::{azusa::ClientPacket, screen::GameData};
+use crate::{azusa::ClientPacket, screen::game::SharedGameData};
 use async_trait::async_trait;
 use macroquad::prelude::*;
-use std::{fmt::Write, sync::Arc};
+use std::fmt::Write;
 
 pub struct ChatOverlay {
     text_buffer: String,
@@ -18,7 +18,7 @@ impl ChatOverlay {
 
 #[async_trait(?Send)]
 impl Overlay for ChatOverlay {
-    async fn update(&mut self, data: Arc<GameData>) {
+    async fn update(&mut self, data: SharedGameData) {
         while let Some(char) = get_char_pressed() {
             self.text_buffer.write_char(char).unwrap();
         }
@@ -29,7 +29,7 @@ impl Overlay for ChatOverlay {
         }
     }
 
-    fn draw(&self, data: Arc<GameData>) {
+    fn draw(&self, data: SharedGameData) {
         draw_rectangle(
             5.0,
             screen_height() - 205.0,
@@ -38,8 +38,8 @@ impl Overlay for ChatOverlay {
             Color::from_rgba(64, 64, 64, 192),
         );
 
-        let lock = data.state.lock();
-        let messages = lock.chat.messages();
+        let state = data.state.borrow();
+        let messages = state.chat.messages();
         for (i, message) in messages.iter().enumerate() {
             draw_text(
                 &format!("{}: {}", message.username, message.content),

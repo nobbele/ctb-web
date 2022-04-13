@@ -1,8 +1,7 @@
-use crate::screen::GameData;
+use crate::screen::game::SharedGameData;
 
 use self::{menubutton::MenuButtonMessage, menubuttonlist::MenuButtonListMessage};
 use macroquad::prelude::*;
-use std::sync::Arc;
 
 pub mod menubutton;
 pub mod menubuttonlist;
@@ -20,7 +19,7 @@ pub enum MessageData {
 // Implementors assumed to call set_bounds in its new() method.
 // Implementors assumed propogate draw_bounds to children.
 pub trait UiElement {
-    fn draw(&self, data: Arc<GameData>);
+    fn draw(&self, data: SharedGameData);
     fn draw_bounds(&self) {
         let bounds = self.bounds();
         draw_rectangle(
@@ -38,6 +37,6 @@ pub trait UiElement {
         self.set_bounds(self.bounds());
     }
 
-    fn update(&mut self, data: Arc<GameData>);
+    fn update(&mut self, data: SharedGameData);
     fn handle_message(&mut self, _message: &Message) {}
 }

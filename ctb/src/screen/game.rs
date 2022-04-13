@@ -24,9 +24,12 @@ use kira::{
     sound::handle::SoundHandle,
 };
 use macroquad::prelude::*;
-use parking_lot::Mutex;
 use ringbuffer::{ConstGenericRingBuffer, RingBuffer, RingBufferExt, RingBufferWrite};
-use std::{sync::Arc, time::Duration};
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
+    time::Duration,
+};
 
 pub enum GameMessage {
     ChangeScreen(Box<dyn Screen>),
@@ -54,9 +57,11 @@ impl GameMessage {
     }
 }
 
+pub type SharedGameData = Rc<GameData>;
+
 pub struct Game {
     pub logger: Logger,
-    pub data: Arc<GameData>,
+    pub data: SharedGameData,
     screen: Box<dyn Screen>,
     overlay: Option<ChatOverlay>,
     azusa: Azusa,
@@ -69,7 +74,7 @@ pub struct Game {
 }
 
 impl Game {
-    pub async fn new(exec: Mutex<PromiseExecutor>) -> Self {
+    pub async fn new() -> Self {
         let mut logger = Logger::new(Duration::from_secs(2));
         let general = logger
             .init_endpoint(LogType::General)
@@ -112,14 +117,14 @@ impl Game {
         let (packet_tx, packet_rx) = flume::unbounded();
         let (game_tx, game_rx) = flume::unbounded();
 
-        let data = Arc::new(GameData {
+        let data = Rc::new(GameData {
             audio_cache,
             image_cache,
             button: load_texture("resources/button.png").await.unwrap(),
             catcher: load_texture("resources/catcher.png").await.unwrap(),
             fruit: load_texture("resources/fruit.png").await.unwrap(),
-            audio: Mutex::new(audio),
-            state: Mutex::new(GameState {
+            audio: RefCell::new(audio),
+            state: RefCell::new(GameState {
                 background: None,
                 music: instance,
                 audio_frame_skip: 0,
@@ -135,11 +140,10 @@ impl Game {
                 difficulty_idx: 0,
                 leaderboard,
                 chat: Chat::new(),
-
-                time: 0.,
-                predicted_time: 0.,
             }),
-            exec,
+            time: Cell::new(0.),
+            predicted_time: Cell::new(0.),
+            exec: RefCell::new(PromiseExecutor::new()),
             packet_tx,
             game_tx,
             general,
@@ -176,12 +180,14 @@ impl Game {
     }
 
     pub async fn update(&mut self) {
-        let time = self.data.state.lock().music.position() as f32;
+        self.data.exec.borrow_mut().poll();
+
+        let time = self.data.state.borrow().music.position() as f32;
         let playing = matches!(
-            self.data.state.lock().music.state(),
+            self.data.state.borrow().music.state(),
             InstanceState::Playing | InstanceState::Stopping | InstanceState::Pausing(_)
         );
-        self.data.state.lock().time = time;
+        self.data.time.set(time);
 
         let delta = time - self.prev_time;
         self.prev_time = time;
@@ -193,12 +199,14 @@ impl Game {
             if delta == 0. {
                 if avg_delta != 0. {
                     let frames_per_audio_frame = avg_delta / get_frame_time();
-                    self.data.state.lock().audio_frame_skip = frames_per_audio_frame as u32;
+                    self.data.state.borrow_mut().audio_frame_skip = frames_per_audio_frame as u32;
                 }
 
-                self.data.state.lock().predicted_time += get_frame_time();
+                self.data
+                    .predicted_time
+                    .set(self.data.predicted_time() + get_frame_time());
             } else {
-                let predicted_time = self.data.state.lock().predicted_time;
+                let predicted_time = self.data.predicted_time();
                 if predicted_time != time {
                     log_to!(
                         self.data.audio_performance,
@@ -210,14 +218,14 @@ impl Game {
                         },
                         (predicted_time - time) * 1000.,
                         avg_delta * 1000.,
-                        self.data.state.lock().audio_frame_skip
+                        self.data.state.borrow().audio_frame_skip
                     );
                 } else {
                     log_to!(self.data.audio_performance, "Wow! Perfect!");
                 }
 
                 self.audio_deltas.push(delta);
-                self.data.state.lock().predicted_time = time;
+                self.data.predicted_time.set(time);
             }
         }
 
@@ -250,11 +258,11 @@ impl Game {
                 } => {
                     self.data
                         .state
-                        .lock()
+                        .borrow_mut()
                         .music
                         .stop(StopInstanceSettings::new())
                         .unwrap();
-                    self.data.state.lock().music = handle
+                    self.data.state.borrow_mut().music = handle
                         .play(
                             InstanceSettings::default()
                                 .volume(0.5)
@@ -269,7 +277,7 @@ impl Game {
                 GameMessage::PauseMusic => self
                     .data
                     .state
-                    .lock()
+                    .borrow_mut()
                     .music
                     .pause(PauseInstanceSettings::new())
                     .unwrap(),
@@ -305,7 +313,9 @@ impl Game {
                     self.last_ping = get_time();
                     self.sent_ping = false;
                 }
-                ServerPacket::Chat(packet) => self.data.state.lock().chat.handle_packet(packet),
+                ServerPacket::Chat(packet) => {
+                    self.data.state.borrow_mut().chat.handle_packet(packet)
+                }
                 _ => {}
             }
         }

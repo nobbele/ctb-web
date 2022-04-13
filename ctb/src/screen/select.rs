@@ -1,4 +1,8 @@
-use super::{game::GameMessage, gameplay::Gameplay, get_charts, ChartInfo, GameData, Screen};
+use super::{
+    game::{GameMessage, SharedGameData},
+    gameplay::Gameplay,
+    get_charts, ChartInfo, Screen,
+};
 use crate::{
     azusa::{ClientPacket, ServerPacket},
     draw_text_centered,
@@ -13,7 +17,6 @@ use async_trait::async_trait;
 use kira::sound::handle::SoundHandle;
 use macroquad::prelude::*;
 use num_format::{Locale, ToFormattedString};
-use std::sync::Arc;
 
 pub struct SelectScreen {
     charts: Vec<ChartInfo>,
@@ -35,7 +38,7 @@ pub struct SelectScreen {
 }
 
 impl SelectScreen {
-    pub fn new(_data: Arc<GameData>) -> Self {
+    pub fn new(_data: SharedGameData) -> Self {
         let (tx, rx) = flume::unbounded();
         let charts = get_charts();
         let charts_raw = charts
@@ -96,7 +99,7 @@ impl SelectScreen {
         }
     }
 
-    async fn start_map(&self, data: Arc<GameData>) {
+    async fn start_map(&self, data: SharedGameData) {
         let chart = &self.charts[self.selected_chart];
         data.broadcast(GameMessage::change_screen(
             Gameplay::new(
@@ -111,20 +114,20 @@ impl SelectScreen {
 
 #[async_trait(?Send)]
 impl Screen for SelectScreen {
-    async fn update(&mut self, data: Arc<GameData>) {
+    async fn update(&mut self, data: SharedGameData) {
         if self.selected_chart != self.prev_selected_chart {
             let data_clone = data.clone();
             if let Some(loading_promise) = &self.loading_promise {
-                data.exec.lock().cancel(loading_promise);
+                data.exec.borrow_mut().cancel(loading_promise);
             }
-            self.loading_promise = Some(data.exec.lock().spawn(move || async move {
+            self.loading_promise = Some(data.exec.borrow_mut().spawn(move || async move {
                 let sound = data_clone
                     .audio_cache
                     .get_sound(
-                        &mut data_clone.audio.lock(),
+                        &mut data_clone.audio.borrow_mut(),
                         &format!(
                             "resources/{}/audio.wav",
-                            data_clone.state.lock().chart.title
+                            data_clone.state.borrow().chart.title
                         ),
                     )
                     .await;
@@ -132,7 +135,7 @@ impl Screen for SelectScreen {
                     .image_cache
                     .get_texture(&format!(
                         "resources/{}/bg.png",
-                        data_clone.state.lock().chart.title
+                        data_clone.state.borrow().chart.title
                     ))
                     .await;
                 (sound, background)
@@ -142,8 +145,8 @@ impl Screen for SelectScreen {
         }
 
         if let Some(loading_promise) = &self.loading_promise {
-            if let Some((sound, background)) = data.exec.lock().try_get(loading_promise) {
-                data.state.lock().background = Some(background);
+            if let Some((sound, background)) = data.exec.borrow_mut().try_get(loading_promise) {
+                data.state.borrow_mut().background = Some(background);
                 data.game_tx
                     .send(GameMessage::update_music_looped(sound))
                     .unwrap();
@@ -264,15 +267,20 @@ impl Screen for SelectScreen {
                 {
                     self.selected_chart = idx;
                     let chart = &self.charts[self.selected_chart];
-                    data.state.lock().chart = chart.clone();
+                    data.state.borrow_mut().chart = chart.clone();
                 }
                 if let MessageData::MenuButtonList(MenuButtonListMessage::SelectedSub(idx)) =
                     message.data
                 {
                     self.selected_difficulty = idx;
-                    data.state.lock().difficulty_idx = idx;
-                    let diff_id = data.state.lock().chart.difficulties[idx].id;
-                    let entries = data.state.lock().leaderboard.get_local(diff_id).await;
+                    data.state.borrow_mut().difficulty_idx = idx;
+                    let diff_id = data.state.borrow().chart.difficulties[idx].id;
+                    let entries = data
+                        .state
+                        .borrow_mut()
+                        .leaderboard
+                        .query_local(diff_id)
+                        .await;
                     let button_title = entries
                         .iter()
                         .map(|entry| {
@@ -323,8 +331,8 @@ impl Screen for SelectScreen {
         }
     }
 
-    fn draw(&self, data: Arc<GameData>) {
-        if let Some(background) = data.state.lock().background {
+    fn draw(&self, data: SharedGameData) {
+        if let Some(background) = data.state.borrow().background {
             draw_texture_ex(
                 background,
                 0.,
@@ -356,10 +364,10 @@ impl Screen for SelectScreen {
         }
     }
 
-    fn handle_packet(&mut self, data: Arc<GameData>, packet: &ServerPacket) {
+    fn handle_packet(&mut self, data: SharedGameData, packet: &ServerPacket) {
         match packet {
             ServerPacket::Leaderboard { diff_id, scores } => {
-                let current_diff_id = data.state.lock().difficulty().id;
+                let current_diff_id = data.state.borrow().difficulty().id;
                 if *diff_id == current_diff_id {
                     let button_title = scores
                         .iter()
