@@ -118,24 +118,21 @@ impl Screen for SelectScreen {
         if self.selected_chart != self.prev_selected_chart {
             let data_clone = data.clone();
             if let Some(loading_promise) = &self.loading_promise {
-                data.exec.borrow_mut().cancel(loading_promise);
+                data.promises().cancel(loading_promise);
             }
-            self.loading_promise = Some(data.exec.borrow_mut().spawn(move || async move {
+            self.loading_promise = Some(data.promises().spawn(move || async move {
                 let sound = data_clone
                     .audio_cache
                     .get_sound(
                         &mut data_clone.audio.borrow_mut(),
-                        &format!(
-                            "resources/{}/audio.wav",
-                            data_clone.state.borrow().chart.title
-                        ),
+                        &format!("resources/{}/audio.wav", data_clone.state().chart.title),
                     )
                     .await;
                 let background = data_clone
                     .image_cache
                     .get_texture(&format!(
                         "resources/{}/bg.png",
-                        data_clone.state.borrow().chart.title
+                        data_clone.state().chart.title
                     ))
                     .await;
                 (sound, background)
@@ -145,11 +142,9 @@ impl Screen for SelectScreen {
         }
 
         if let Some(loading_promise) = &self.loading_promise {
-            if let Some((sound, background)) = data.exec.borrow_mut().try_get(loading_promise) {
-                data.state.borrow_mut().background = Some(background);
-                data.game_tx
-                    .send(GameMessage::update_music_looped(sound))
-                    .unwrap();
+            if let Some((sound, background)) = data.promises().try_get(loading_promise) {
+                data.background.set(Some(background));
+                data.broadcast(GameMessage::update_music_looped(sound));
 
                 self.loading_promise = None;
             }
@@ -274,13 +269,8 @@ impl Screen for SelectScreen {
                 {
                     self.selected_difficulty = idx;
                     data.state.borrow_mut().difficulty_idx = idx;
-                    let diff_id = data.state.borrow().chart.difficulties[idx].id;
-                    let entries = data
-                        .state
-                        .borrow_mut()
-                        .leaderboard
-                        .query_local(diff_id)
-                        .await;
+                    let diff_id = data.state().chart.difficulties[idx].id;
+                    let entries = data.state_mut().leaderboard.query_local(diff_id).await;
                     let button_title = entries
                         .iter()
                         .map(|entry| {
@@ -332,18 +322,16 @@ impl Screen for SelectScreen {
     }
 
     fn draw(&self, data: SharedGameData) {
-        if let Some(background) = data.state.borrow().background {
-            draw_texture_ex(
-                background,
-                0.,
-                0.,
-                Color::new(1., 1., 1., 0.6),
-                DrawTextureParams {
-                    dest_size: Some(vec2(screen_width(), screen_height())),
-                    ..Default::default()
-                },
-            );
-        }
+        draw_texture_ex(
+            data.background(),
+            0.,
+            0.,
+            Color::new(1., 1., 1., 0.6),
+            DrawTextureParams {
+                dest_size: Some(vec2(screen_width(), screen_height())),
+                ..Default::default()
+            },
+        );
         self.chart_list.draw(data.clone());
         self.start.draw(data.clone());
         if let Some(local) = &self.local_lb {
@@ -367,7 +355,7 @@ impl Screen for SelectScreen {
     fn handle_packet(&mut self, data: SharedGameData, packet: &ServerPacket) {
         match packet {
             ServerPacket::Leaderboard { diff_id, scores } => {
-                let current_diff_id = data.state.borrow().difficulty().id;
+                let current_diff_id = data.state().difficulty().id;
                 if *diff_id == current_diff_id {
                     let button_title = scores
                         .iter()

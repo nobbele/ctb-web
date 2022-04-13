@@ -123,9 +123,9 @@ impl Game {
             button: load_texture("resources/button.png").await.unwrap(),
             catcher: load_texture("resources/catcher.png").await.unwrap(),
             fruit: load_texture("resources/fruit.png").await.unwrap(),
+            default_background: load_texture("resources/default-bg.png").await.unwrap(),
             audio: RefCell::new(audio),
             state: RefCell::new(GameState {
-                background: None,
                 music: instance,
                 audio_frame_skip: 0,
                 binds,
@@ -143,7 +143,8 @@ impl Game {
             }),
             time: Cell::new(0.),
             predicted_time: Cell::new(0.),
-            exec: RefCell::new(PromiseExecutor::new()),
+            background: Cell::new(None),
+            promises: RefCell::new(PromiseExecutor::new()),
             packet_tx,
             game_tx,
             general,
@@ -180,11 +181,11 @@ impl Game {
     }
 
     pub async fn update(&mut self) {
-        self.data.exec.borrow_mut().poll();
+        self.data.promises().poll();
 
-        let time = self.data.state.borrow().music.position() as f32;
+        let time = self.data.state().music.position() as f32;
         let playing = matches!(
-            self.data.state.borrow().music.state(),
+            self.data.state().music.state(),
             InstanceState::Playing | InstanceState::Stopping | InstanceState::Pausing(_)
         );
         self.data.time.set(time);
@@ -199,7 +200,7 @@ impl Game {
             if delta == 0. {
                 if avg_delta != 0. {
                     let frames_per_audio_frame = avg_delta / get_frame_time();
-                    self.data.state.borrow_mut().audio_frame_skip = frames_per_audio_frame as u32;
+                    self.data.state_mut().audio_frame_skip = frames_per_audio_frame as u32;
                 }
 
                 self.data
@@ -218,7 +219,7 @@ impl Game {
                         },
                         (predicted_time - time) * 1000.,
                         avg_delta * 1000.,
-                        self.data.state.borrow().audio_frame_skip
+                        self.data.state().audio_frame_skip
                     );
                 } else {
                     log_to!(self.data.audio_performance, "Wow! Perfect!");
@@ -257,12 +258,11 @@ impl Game {
                     looping,
                 } => {
                     self.data
-                        .state
-                        .borrow_mut()
+                        .state_mut()
                         .music
                         .stop(StopInstanceSettings::new())
                         .unwrap();
-                    self.data.state.borrow_mut().music = handle
+                    self.data.state_mut().music = handle
                         .play(
                             InstanceSettings::default()
                                 .volume(0.5)
@@ -276,8 +276,7 @@ impl Game {
                 }
                 GameMessage::PauseMusic => self
                     .data
-                    .state
-                    .borrow_mut()
+                    .state_mut()
                     .music
                     .pause(PauseInstanceSettings::new())
                     .unwrap(),
@@ -313,9 +312,7 @@ impl Game {
                     self.last_ping = get_time();
                     self.sent_ping = false;
                 }
-                ServerPacket::Chat(packet) => {
-                    self.data.state.borrow_mut().chat.handle_packet(packet)
-                }
+                ServerPacket::Chat(packet) => self.data.state_mut().chat.handle_packet(packet),
                 _ => {}
             }
         }

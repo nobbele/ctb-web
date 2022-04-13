@@ -38,7 +38,7 @@ impl Overlay for ChatOverlay {
             Color::from_rgba(64, 64, 64, 192),
         );
 
-        let state = data.state.borrow();
+        let state = data.state();
         let messages = state.chat.messages();
         for (i, message) in messages.iter().enumerate() {
             draw_text(

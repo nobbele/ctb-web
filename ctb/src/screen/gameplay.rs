@@ -128,7 +128,7 @@ impl Gameplay {
 #[async_trait(?Send)]
 impl Screen for Gameplay {
     async fn update(&mut self, data: SharedGameData) {
-        let binds = data.state.borrow().binds;
+        let binds = data.state().binds;
         let catcher_y = self.catcher_y();
 
         if !self.started {
@@ -138,8 +138,7 @@ impl Screen for Gameplay {
             if self.time_countdown > 0. {
                 self.time_countdown -= get_frame_time();
             } else {
-                data.state
-                    .borrow_mut()
+                data.state_mut()
                     .music
                     .resume(ResumeInstanceSettings::new())
                     .unwrap();
@@ -199,18 +198,14 @@ impl Screen for Gameplay {
         }
 
         if self.queued_fruits.is_empty() {
-            let diff_id = data.state.borrow().difficulty().id;
+            let diff_id = data.state().difficulty().id;
             let score = self.recorder.to_score(diff_id);
             if score.passed {
-                data.state
-                    .borrow_mut()
-                    .leaderboard
-                    .submit_score(&score)
-                    .await;
+                data.state_mut().leaderboard.submit_score(&score).await;
             }
 
-            let map_title = data.state.borrow().chart.title.clone();
-            let diff_title = data.state.borrow().difficulty().name.clone();
+            let map_title = data.state().chart.title.clone();
+            let diff_title = data.state().difficulty().name.clone();
             data.broadcast(GameMessage::change_screen(ResultScreen::new(
                 &score, map_title, diff_title,
             )));
@@ -229,18 +224,16 @@ impl Screen for Gameplay {
     }
 
     fn draw(&self, data: SharedGameData) {
-        if let Some(background) = data.state.borrow().background {
-            draw_texture_ex(
-                background,
-                0.,
-                0.,
-                Color::new(0.5, 0.5, 0.5, 0.2),
-                DrawTextureParams {
-                    dest_size: Some(vec2(screen_width(), screen_height())),
-                    ..Default::default()
-                },
-            );
-        }
+        draw_texture_ex(
+            data.background(),
+            0.,
+            0.,
+            Color::new(0.5, 0.5, 0.5, 0.2),
+            DrawTextureParams {
+                dest_size: Some(vec2(screen_width(), screen_height())),
+                ..Default::default()
+            },
+        );
         draw_line(
             self.playfield_to_screen_x(0.) + 2. / 2.,
             0.,

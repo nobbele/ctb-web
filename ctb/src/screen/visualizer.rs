@@ -28,10 +28,7 @@ impl Screen for Visualizer {
     fn draw(&self, data: SharedGameData) {
         let receptor_y = screen_height() * 2. / 3.;
 
-        let text = format!(
-            "Audio Frame Skips: {}",
-            data.state.borrow().audio_frame_skip
-        );
+        let text = format!("Audio Frame Skips: {}", data.state().audio_frame_skip);
         let text_measurements = measure_text(&text, None, 32, 1.);
         draw_text_centered(
             &text,

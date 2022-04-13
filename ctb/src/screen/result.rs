@@ -37,18 +37,16 @@ impl ResultScreen {
 #[async_trait(?Send)]
 impl Screen for ResultScreen {
     fn draw(&self, data: SharedGameData) {
-        if let Some(background) = data.state.borrow().background {
-            draw_texture_ex(
-                background,
-                0.,
-                0.,
-                Color::new(0.5, 0.5, 0.5, 0.2),
-                DrawTextureParams {
-                    dest_size: Some(vec2(screen_width(), screen_height())),
-                    ..Default::default()
-                },
-            );
-        }
+        draw_texture_ex(
+            data.background(),
+            0.,
+            0.,
+            Color::new(0.5, 0.5, 0.5, 0.2),
+            DrawTextureParams {
+                dest_size: Some(vec2(screen_width(), screen_height())),
+                ..Default::default()
+            },
+        );
 
         draw_text_centered(
             &format!(

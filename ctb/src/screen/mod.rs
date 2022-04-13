@@ -10,7 +10,7 @@ use crate::{
 use async_trait::async_trait;
 use kira::{instance::handle::InstanceHandle, manager::AudioManager, sound::handle::SoundHandle};
 use macroquad::prelude::*;
-use std::cell::{Cell, RefCell};
+use std::cell::{Cell, Ref, RefCell, RefMut};
 
 use self::game::{GameMessage, SharedGameData};
 
@@ -111,7 +111,6 @@ pub struct GameState {
     pub chart: ChartInfo,
     pub difficulty_idx: usize,
     pub music: InstanceHandle,
-    pub background: Option<Texture2D>,
     pub audio_frame_skip: u32,
     pub binds: KeyBinds,
 
@@ -130,6 +129,7 @@ pub struct GameData {
     pub catcher: Texture2D,
     pub fruit: Texture2D,
     pub button: Texture2D,
+    pub default_background: Texture2D,
 
     pub general: LogEndpoint,
     pub network: LogEndpoint,
@@ -140,9 +140,10 @@ pub struct GameData {
 
     time: Cell<f32>,
     predicted_time: Cell<f32>,
+    background: Cell<Option<Texture2D>>,
 
-    pub state: RefCell<GameState>,
-    pub exec: RefCell<PromiseExecutor>,
+    state: RefCell<GameState>,
+    promises: RefCell<PromiseExecutor>,
     packet_tx: flume::Sender<ClientPacket>,
     game_tx: flume::Sender<GameMessage>,
 }
@@ -164,5 +165,21 @@ impl GameData {
 
     pub fn predicted_time(&self) -> f32 {
         self.predicted_time.get()
+    }
+
+    pub fn promises(&self) -> RefMut<'_, PromiseExecutor> {
+        self.promises.borrow_mut()
+    }
+
+    pub fn state(&self) -> Ref<'_, GameState> {
+        self.state.borrow()
+    }
+
+    pub fn state_mut(&self) -> RefMut<'_, GameState> {
+        self.state.borrow_mut()
+    }
+
+    pub fn background(&self) -> Texture2D {
+        self.background.get().unwrap_or(self.default_background)
     }
 }
