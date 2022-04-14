@@ -35,6 +35,7 @@ pub enum GameMessage {
     ChangeScreen(Box<dyn Screen>),
     UpdateMusic { handle: SoundHandle, looping: bool },
     PauseMusic,
+    SetVolume(f32),
 }
 
 impl GameMessage {
@@ -71,6 +72,7 @@ pub struct Game {
     game_rx: flume::Receiver<GameMessage>,
     last_ping: f64,
     sent_ping: bool,
+    volume: f32,
 }
 
 impl Game {
@@ -113,6 +115,7 @@ impl Game {
             dash: KeyCode::RightShift,
         });
         let token = get_value::<uuid::Uuid>("token");
+        let volume = get_value("volume").unwrap_or(0.25);
 
         let (packet_tx, packet_rx) = flume::unbounded();
         let (game_tx, game_rx) = flume::unbounded();
@@ -178,6 +181,7 @@ impl Game {
             game_rx,
             last_ping: get_time(),
             sent_ping: false,
+            volume,
         }
     }
 
@@ -247,7 +251,7 @@ impl Game {
                 self.overlay = None;
             } else {
                 log_to!(self.data.general, "Opening settings overlay");
-                self.overlay = Some(OverlayEnum::Settings(overlay::Settings::new()));
+                self.overlay = Some(OverlayEnum::Settings(overlay::Settings::new(self.volume)));
             }
         }
 
@@ -278,7 +282,7 @@ impl Game {
                     self.data.state_mut().music = handle
                         .play(
                             InstanceSettings::default()
-                                .volume(0.5)
+                                .volume(self.volume as f64)
                                 .loop_start(if looping {
                                     InstanceLoopStart::Custom(0.0)
                                 } else {
@@ -293,6 +297,15 @@ impl Game {
                     .music
                     .pause(PauseInstanceSettings::new())
                     .unwrap(),
+                GameMessage::SetVolume(volume) => {
+                    self.volume = volume;
+                    self.data
+                        .state_mut()
+                        .music
+                        .set_volume(volume as f64)
+                        .unwrap();
+                    set_value("volume", volume);
+                }
             }
         }
 
