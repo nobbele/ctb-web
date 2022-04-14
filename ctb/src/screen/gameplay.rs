@@ -4,7 +4,7 @@ use super::{
     select::SelectScreen,
     Screen,
 };
-use crate::{azusa::ClientPacket, chart::Chart, draw_text_centered, score::ScoreRecorder};
+use crate::{azusa::ClientPacket, chart::Chart, draw_text_centered, math, score::ScoreRecorder};
 use async_trait::async_trait;
 use kira::instance::ResumeInstanceSettings;
 use macroquad::prelude::*;
@@ -180,11 +180,38 @@ impl Screen for Gameplay {
             let hit = can_catch_fruit(catcher_hitbox, fruit_hitbox);
             let miss = fruit_hitbox.y >= screen_height();
             assert!(!(hit && miss), "Can't hit and miss at the same time!");
+
             if hit {
+                let player_position_panning = math::remap(
+                    0.,
+                    self.playfield_width(),
+                    data.panning().0,
+                    data.panning().1,
+                    self.position,
+                );
+                data.hit_normal
+                    .borrow_mut()
+                    .play(
+                        kira::instance::InstanceSettings::default()
+                            .volume(data.total_hitsound_volume() as f64)
+                            .panning(player_position_panning as f64),
+                    )
+                    .unwrap();
+
                 self.recorder.register_judgement(true);
                 self.deref_delete.push(idx);
             }
             if miss {
+                if self.recorder.combo >= 8 {
+                    data.combo_break
+                        .borrow_mut()
+                        .play(
+                            kira::instance::InstanceSettings::new()
+                                .volume(data.total_hitsound_volume() as f64),
+                        )
+                        .unwrap();
+                }
+
                 self.recorder.register_judgement(false);
                 self.deref_delete.push(idx);
             }

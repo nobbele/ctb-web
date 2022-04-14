@@ -35,7 +35,8 @@ pub enum GameMessage {
     ChangeScreen(Box<dyn Screen>),
     UpdateMusic { handle: SoundHandle, looping: bool },
     PauseMusic,
-    SetVolume(f32),
+    SetMasterVolume(f32),
+    SetHitsoundVolume(f32),
 }
 
 impl GameMessage {
@@ -106,7 +107,7 @@ impl Game {
             .get_sound(&mut audio, "resources/Kizuato/audio.wav")
             .await;
 
-        let instance = sound.play(InstanceSettings::default().volume(0.)).unwrap();
+        let instance = sound.play(InstanceSettings::new().volume(0.)).unwrap();
 
         let first_time = get_value::<bool>("first_time").unwrap_or(true);
         let binds = get_value::<KeyBinds>("binds").unwrap_or(KeyBinds {
@@ -115,10 +116,21 @@ impl Game {
             dash: KeyCode::RightShift,
         });
         let token = get_value::<uuid::Uuid>("token");
-        let volume = get_value("volume").unwrap_or(0.25);
+
+        let panning = get_value::<(f32, f32)>("panning").unwrap_or((0.25, 0.75));
+        let master_volume = get_value("master_volume").unwrap_or(0.25);
+        let hitsound_volume = get_value("hitsound_volume").unwrap_or(1.0);
 
         let (packet_tx, packet_rx) = flume::unbounded();
         let (game_tx, game_rx) = flume::unbounded();
+
+        let combo_break = audio_cache
+            .get_sound(&mut audio, "resources/combobreak.wav")
+            .await;
+
+        let hit_normal = audio_cache
+            .get_sound(&mut audio, "resources/hitnormal.wav")
+            .await;
 
         let data = Rc::new(GameData {
             audio_cache,
@@ -127,6 +139,8 @@ impl Game {
             catcher: load_texture("resources/catcher.png").await.unwrap(),
             fruit: load_texture("resources/fruit.png").await.unwrap(),
             default_background: load_texture("resources/default-bg.png").await.unwrap(),
+            combo_break: RefCell::new(combo_break),
+            hit_normal: RefCell::new(hit_normal),
             audio: RefCell::new(audio),
             state: RefCell::new(GameState {
                 music: instance,
@@ -147,6 +161,9 @@ impl Game {
             time: Cell::new(0.),
             predicted_time: Cell::new(0.),
             background: Cell::new(None),
+            panning: Cell::new(panning),
+            master_volume: Cell::new(master_volume),
+            hitsound_volume: Cell::new(hitsound_volume),
             locked_input: Cell::new(false),
             promises: RefCell::new(PromiseExecutor::new()),
             packet_tx,
@@ -181,7 +198,7 @@ impl Game {
             game_rx,
             last_ping: get_time(),
             sent_ping: false,
-            volume,
+            volume: master_volume,
         }
     }
 
@@ -251,7 +268,9 @@ impl Game {
                 self.overlay = None;
             } else {
                 log_to!(self.data.general, "Opening settings overlay");
-                self.overlay = Some(OverlayEnum::Settings(overlay::Settings::new(self.volume)));
+                self.overlay = Some(OverlayEnum::Settings(overlay::Settings::new(
+                    self.data.clone(),
+                )));
             }
         }
 
@@ -297,14 +316,19 @@ impl Game {
                     .music
                     .pause(PauseInstanceSettings::new())
                     .unwrap(),
-                GameMessage::SetVolume(volume) => {
+                GameMessage::SetMasterVolume(volume) => {
                     self.volume = volume;
+                    self.data.master_volume.set(volume);
                     self.data
                         .state_mut()
                         .music
                         .set_volume(volume as f64)
                         .unwrap();
-                    set_value("volume", volume);
+                    set_value("master_volume", volume);
+                }
+                GameMessage::SetHitsoundVolume(volume) => {
+                    self.data.hitsound_volume.set(volume);
+                    set_value("hitsound_volume", volume);
                 }
             }
         }

@@ -14,6 +14,7 @@ pub mod chat;
 pub mod config;
 pub mod leaderboard;
 pub mod log;
+pub mod math;
 pub mod promise;
 pub mod score;
 pub mod screen;

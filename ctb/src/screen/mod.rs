@@ -2,7 +2,7 @@ use crate::{
     azusa::{ClientPacket, ServerPacket},
     cache::Cache,
     chat::Chat,
-    config::KeyBinds,
+    config::{self, KeyBinds},
     leaderboard::Leaderboard,
     log::LogEndpoint,
     promise::PromiseExecutor,
@@ -21,6 +21,8 @@ pub mod result;
 pub mod select;
 pub mod setup;
 pub mod visualizer;
+
+// TODO move game.rs and GameState and GameData into a game module.
 
 #[derive(Debug, Clone)]
 pub struct DifficultyInfo {
@@ -130,6 +132,13 @@ pub struct GameData {
     pub fruit: Texture2D,
     pub button: Texture2D,
     pub default_background: Texture2D,
+    // TODO These should not require refcells..
+    pub combo_break: RefCell<SoundHandle>,
+    pub hit_normal: RefCell<SoundHandle>,
+
+    master_volume: Cell<f32>,
+    hitsound_volume: Cell<f32>,
+    panning: Cell<(f32, f32)>,
 
     pub general: LogEndpoint,
     pub network: LogEndpoint,
@@ -167,6 +176,26 @@ impl GameData {
 
     pub fn predicted_time(&self) -> f32 {
         self.predicted_time.get()
+    }
+
+    pub fn master_volume(&self) -> f32 {
+        self.master_volume.get()
+    }
+
+    pub fn total_hitsound_volume(&self) -> f32 {
+        self.master_volume() * self.hitsound_volume.get()
+    }
+
+    pub fn panning(&self) -> (f32, f32) {
+        self.panning.get()
+    }
+
+    pub fn set_panning(&self, left: f32, right: f32) {
+        assert!(left <= right);
+        assert!(left >= 0.0);
+        assert!(right <= 1.0);
+        self.panning.set((left, right));
+        config::set_value("panning", (left, right));
     }
 
     pub fn promises(&self) -> RefMut<'_, PromiseExecutor> {
