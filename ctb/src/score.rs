@@ -33,7 +33,7 @@ pub struct ScoreRecorder<J: Judgement> {
     pub judgements: HashMap<J, u32>,
 
     /// This needs to be tracked separately due to floating point imprecision.
-    pub internal_score: f32,
+    pub internal_score: f64,
     pub chain_miss_count: u32,
 
     /// Max = 1,000,000
@@ -70,8 +70,8 @@ impl<J: Judgement> ScoreRecorder<J> {
             self.combo += 1;
             self.top_combo = self.top_combo.max(self.combo);
 
-            self.internal_score += self.combo as f32 / self.max_combo as f32;
-            self.score = (self.internal_score * 1_000_000. * 2. / (self.max_combo as f32 + 1.))
+            self.internal_score += self.combo as f64 / self.max_combo as f64;
+            self.score = (self.internal_score * 1_000_000. * 2. / (self.max_combo as f64 + 1.))
                 .round() as u32;
             self.hit_count += 1;
             self.chain_miss_count = 0;
@@ -126,7 +126,7 @@ impl<J: Judgement> ScoreRecorder<J> {
 
 #[test]
 fn test_score_recorder_limits() {
-    for max_combo in 1..256 {
+    for max_combo in 1..4000 {
         dbg!(max_combo);
         let mut recorder = ScoreRecorder::<crate::screen::gameplay::CatchJudgement>::new(max_combo);
         for _ in 0..max_combo {
