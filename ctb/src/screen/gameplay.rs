@@ -222,7 +222,7 @@ impl Screen for Gameplay {
                     )
                     .unwrap();
 
-                self.recorder.register_judgement(true);
+                self.recorder.register_judgement(CatchJudgement::Perfect);
                 self.deref_delete.push(idx);
             }
             if miss {
@@ -236,7 +236,7 @@ impl Screen for Gameplay {
                         .unwrap();
                 }
 
-                self.recorder.register_judgement(false);
+                self.recorder.register_judgement(CatchJudgement::Miss);
                 self.deref_delete.push(idx);
             }
             if hit || miss {

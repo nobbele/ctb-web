@@ -65,7 +65,7 @@ impl<J: Judgement> ScoreRecorder<J> {
         }
     }
 
-    pub fn register_judgement2(&mut self, judgement: J) {
+    pub fn register_judgement(&mut self, judgement: J) {
         if !judgement.is_miss() {
             self.combo += 1;
             self.top_combo = self.top_combo.max(self.combo);
@@ -106,10 +106,6 @@ impl<J: Judgement> ScoreRecorder<J> {
         self.accuracy = self.hit_count as f32 / (self.hit_count + self.miss_count) as f32;
     }
 
-    pub fn register_judgement(&mut self, hit: bool) {
-        self.register_judgement2(if hit { J::hit(0.) } else { J::miss() })
-    }
-
     pub fn to_score(&self, diff_id: u32) -> Score<J> {
         Score {
             username: None,
@@ -126,11 +122,12 @@ impl<J: Judgement> ScoreRecorder<J> {
 
 #[test]
 fn test_score_recorder_limits() {
+    use crate::screen::gameplay::CatchJudgement;
     for max_combo in 1..4000 {
         dbg!(max_combo);
-        let mut recorder = ScoreRecorder::<crate::screen::gameplay::CatchJudgement>::new(max_combo);
+        let mut recorder = ScoreRecorder::new(max_combo);
         for _ in 0..max_combo {
-            recorder.register_judgement(true);
+            recorder.register_judgement(CatchJudgement::Perfect);
         }
         assert_eq!(recorder.score, 1_000_000);
     }
@@ -138,30 +135,31 @@ fn test_score_recorder_limits() {
 
 #[test]
 fn test_hp() {
-    let mut recorder = ScoreRecorder::<crate::screen::gameplay::CatchJudgement>::new(100);
+    use crate::screen::gameplay::CatchJudgement;
+    let mut recorder = ScoreRecorder::new(100);
     assert_eq!(recorder.hp, 1.0);
     for _ in 0..10 {
-        recorder.register_judgement(true);
+        recorder.register_judgement(CatchJudgement::Perfect);
     }
     assert_eq!(recorder.hp, 1.0);
-    recorder.register_judgement(false);
+    recorder.register_judgement(CatchJudgement::Miss);
     assert_eq!(recorder.hp, 0.9749252);
     for _ in 0..10 {
-        recorder.register_judgement(true);
+        recorder.register_judgement(CatchJudgement::Perfect);
     }
     assert_eq!(recorder.hp, 1.0);
     for _ in 0..3 {
-        recorder.register_judgement(false);
+        recorder.register_judgement(CatchJudgement::Miss);
     }
     assert_eq!(recorder.hp, 0.8362208);
-    recorder.register_judgement(true);
+    recorder.register_judgement(CatchJudgement::Perfect);
     for _ in 0..6 {
-        recorder.register_judgement(false);
+        recorder.register_judgement(CatchJudgement::Miss);
     }
     assert_eq!(recorder.hp, 0.22481588);
-    recorder.register_judgement(true);
+    recorder.register_judgement(CatchJudgement::Perfect);
     for _ in 0..12 {
-        recorder.register_judgement(false);
+        recorder.register_judgement(CatchJudgement::Miss);
     }
     assert_eq!(recorder.hp, 0.0);
 }
