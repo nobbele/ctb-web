@@ -1,23 +1,36 @@
 use serde::{Deserialize, Serialize};
+use std::{collections::HashMap, hash::Hash};
+
+pub trait Judgement: Hash + Eq + Clone {
+    fn hit(inaccuracy: f32) -> Self;
+    fn miss() -> Self;
+
+    fn is_miss(&self) -> bool {
+        self == &Self::miss()
+    }
+}
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct Score {
+pub struct Score<J: Judgement> {
     pub username: Option<String>,
     pub diff_id: u32,
     pub top_combo: u32,
     pub hit_count: u32,
     pub miss_count: u32,
+    pub judgements: HashMap<J, u32>,
     pub score: u32,
     pub passed: bool,
 }
 
-pub struct ScoreRecorder {
+pub struct ScoreRecorder<J: Judgement> {
     pub combo: u32,
     pub top_combo: u32,
     pub max_combo: u32,
 
     pub hit_count: u32,
     pub miss_count: u32,
+
+    pub judgements: HashMap<J, u32>,
 
     /// This needs to be tracked separately due to floating point imprecision.
     pub internal_score: f32,
@@ -35,7 +48,7 @@ fn polynomial(x: f32, coeffs: &[f32]) -> f32 {
     coeffs.iter().rev().fold(0., |acc, &c| acc * x + c)
 }
 
-impl ScoreRecorder {
+impl<J: Judgement> ScoreRecorder<J> {
     pub fn new(max_combo: u32) -> Self {
         ScoreRecorder {
             combo: 0,
@@ -43,6 +56,7 @@ impl ScoreRecorder {
             max_combo,
             hit_count: 0,
             miss_count: 0,
+            judgements: HashMap::new(),
             internal_score: 0.,
             chain_miss_count: 0,
             score: 0,
@@ -51,8 +65,8 @@ impl ScoreRecorder {
         }
     }
 
-    pub fn register_judgement(&mut self, hit: bool) {
-        if hit {
+    pub fn register_judgement2(&mut self, judgement: J) {
+        if !judgement.is_miss() {
             self.combo += 1;
             self.top_combo = self.top_combo.max(self.combo);
 
@@ -92,7 +106,11 @@ impl ScoreRecorder {
         self.accuracy = self.hit_count as f32 / (self.hit_count + self.miss_count) as f32;
     }
 
-    pub fn to_score(&self, diff_id: u32) -> Score {
+    pub fn register_judgement(&mut self, hit: bool) {
+        self.register_judgement2(if hit { J::hit(0.) } else { J::miss() })
+    }
+
+    pub fn to_score(&self, diff_id: u32) -> Score<J> {
         Score {
             username: None,
             diff_id,
@@ -101,15 +119,16 @@ impl ScoreRecorder {
             miss_count: self.miss_count,
             score: self.score,
             passed: self.hp > 0.5,
+            judgements: self.judgements.clone(),
         }
     }
 }
 
 #[test]
 fn test_score_recorder_limits() {
-    for max_combo in (1..256).step_by(13) {
+    for max_combo in 1..256 {
         dbg!(max_combo);
-        let mut recorder = ScoreRecorder::new(max_combo);
+        let mut recorder = ScoreRecorder::<crate::screen::gameplay::CatchJudgement>::new(max_combo);
         for _ in 0..max_combo {
             recorder.register_judgement(true);
         }
@@ -119,7 +138,7 @@ fn test_score_recorder_limits() {
 
 #[test]
 fn test_hp() {
-    let mut recorder = ScoreRecorder::new(100);
+    let mut recorder = ScoreRecorder::<crate::screen::gameplay::CatchJudgement>::new(100);
     assert_eq!(recorder.hp, 1.0);
     for _ in 0..10 {
         recorder.register_judgement(true);

@@ -1,11 +1,11 @@
 use crate::log_to;
 use crate::screen::game::SharedGameData;
 
+use crate::chat::ChatMessagePacket;
+use crate::screen::gameplay::CatchScore;
 use crate::web_socket::{ConnectionStatus, WebSocket};
-use crate::{chat::ChatMessagePacket, score::Score};
 use macroquad::prelude::*;
 use serde::{Deserialize, Serialize};
-
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum ServerPacket {
@@ -13,7 +13,10 @@ pub enum ServerPacket {
     Echo(String),
     Chat(ChatMessagePacket),
     Connected,
-    Leaderboard { diff_id: u32, scores: Vec<Score> },
+    Leaderboard {
+        diff_id: u32,
+        scores: Vec<CatchScore>,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -22,7 +25,7 @@ pub enum ClientPacket {
     Echo(String),
     Chat(String),
     Login(uuid::Uuid),
-    Submit(Score),
+    Submit(CatchScore),
     RequestLeaderboard(u32),
     Goodbye,
 }

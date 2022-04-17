@@ -4,7 +4,12 @@ use super::{
     select::SelectScreen,
     Screen,
 };
-use crate::{azusa::ClientPacket, chart::Chart, draw_text_centered, math, score::ScoreRecorder};
+use crate::{
+    azusa::ClientPacket,
+    chart::Chart,
+    draw_text_centered, math,
+    score::{Judgement, Score, ScoreRecorder},
+};
 use async_trait::async_trait;
 use kira::instance::ResumeInstanceSettings;
 use macroquad::prelude::*;
@@ -23,8 +28,27 @@ pub fn catcher_speed(dashing: bool, hyper_multiplier: f32) -> f32 {
     mov_speed
 }
 
+#[derive(Debug, Hash, Eq, PartialEq, serde::Serialize, serde::Deserialize, Clone)]
+pub enum CatchJudgement {
+    Perfect,
+    Miss,
+}
+
+impl Judgement for CatchJudgement {
+    fn hit(_inaccuracy: f32) -> Self {
+        Self::Perfect
+    }
+
+    fn miss() -> Self {
+        Self::Miss
+    }
+}
+
+pub type CatchScoreRecorder = ScoreRecorder<CatchJudgement>;
+pub type CatchScore = Score<CatchJudgement>;
+
 pub struct Gameplay {
-    recorder: ScoreRecorder,
+    recorder: ScoreRecorder<CatchJudgement>,
 
     time: f32,
     predicted_time: f32,

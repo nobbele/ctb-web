@@ -1,4 +1,4 @@
-use crate::score::Score;
+use crate::screen::gameplay::CatchScore;
 #[cfg(not(target_family = "wasm"))]
 use {
     gluesql::prelude::{Glue, Payload, SledStorage, Value},
@@ -28,7 +28,7 @@ impl Leaderboard {
         Leaderboard { glue }
     }
 
-    pub async fn submit_score(&mut self, score: &Score) {
+    pub async fn submit_score(&mut self, score: &CatchScore) {
         self.glue
             .execute_async(&format!(
                 include_str!("queries/insert_leaderboard.sql"),

@@ -1,9 +1,10 @@
 use super::{
     game::{GameMessage, SharedGameData},
+    gameplay::CatchScore,
     select::SelectScreen,
     Screen,
 };
-use crate::{draw_text_centered, score::Score};
+use crate::draw_text_centered;
 use async_trait::async_trait;
 use macroquad::prelude::*;
 
@@ -20,7 +21,7 @@ pub struct ResultScreen {
 }
 
 impl ResultScreen {
-    pub fn new(score: &Score, title: String, difficulty: String) -> Self {
+    pub fn new(score: &CatchScore, title: String, difficulty: String) -> Self {
         ResultScreen {
             title,
             difficulty,

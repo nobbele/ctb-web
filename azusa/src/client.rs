@@ -2,10 +2,10 @@ use crate::app::{App, Target};
 use ctb::{
     azusa::{ClientPacket, ServerPacket},
     chat::{ChatMessage, ChatMessagePacket},
-    score::Score,
+    screen::gameplay::CatchScore,
 };
 use sqlx::Row;
-use std::time::Instant;
+use std::{collections::HashMap, time::Instant};
 
 pub struct Client {
     last_ping: Instant,
@@ -91,7 +91,7 @@ impl Client {
                     let miss_count: i32 = row.try_get(2).unwrap();
                     let score: i32 = row.try_get(3).unwrap();
                     let top_combo: i32 = row.try_get(4).unwrap();
-                    Score {
+                    CatchScore {
                         username: Some(username),
                         diff_id,
                         hit_count: hit_count.try_into().unwrap(),
@@ -99,6 +99,7 @@ impl Client {
                         score: score.try_into().unwrap(),
                         top_combo: top_combo.try_into().unwrap(),
                         passed: true,
+                        judgements: HashMap::new(),
                     }
                 })
                 .fetch_all(&self.app.pool)
