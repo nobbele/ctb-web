@@ -1,4 +1,4 @@
-use crate::screen::gameplay::CatchScore;
+use crate::screen::gameplay::{CatchJudgement, CatchScore};
 #[cfg(not(target_family = "wasm"))]
 use {
     gluesql::prelude::{Glue, Payload, SledStorage, Value},
@@ -32,7 +32,11 @@ impl Leaderboard {
         self.glue
             .execute_async(&format!(
                 include_str!("queries/insert_leaderboard.sql"),
-                score.diff_id, score.hit_count, score.miss_count, score.score, score.top_combo
+                score.diff_id,
+                score.judgements[&CatchJudgement::Perfect],
+                score.judgements[&CatchJudgement::Miss],
+                score.score,
+                score.top_combo
             ))
             .await
             .unwrap();

@@ -7,6 +7,7 @@ use crate::{
     azusa::{ClientPacket, ServerPacket},
     draw_text_centered,
     promise::Promise,
+    score,
     ui::{
         menubutton::{MenuButton, MenuButtonMessage, Popout},
         menubuttonlist::{MenuButtonList, MenuButtonListMessage},
@@ -359,15 +360,13 @@ impl Screen for SelectScreen {
                     let button_title = scores
                         .iter()
                         .map(|score| {
-                            let accuracy = score.hit_count as f32
-                                / (score.hit_count + score.miss_count) as f32;
                             (
                                 vec![
                                     score.username.clone().unwrap(),
                                     format!(
                                         "{} ({:.2}%)",
                                         score.score.to_formatted_string(&Locale::en),
-                                        accuracy * 100.
+                                        score::accuracy(&score.judgements) * 100.
                                     ),
                                 ],
                                 None,

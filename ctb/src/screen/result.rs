@@ -1,42 +1,34 @@
 use super::{
     game::{GameMessage, SharedGameData},
-    gameplay::CatchScore,
     select::SelectScreen,
     Screen,
 };
-use crate::draw_text_centered;
+use crate::{
+    draw_text_centered,
+    score::{self, Judgement, Score},
+};
 use async_trait::async_trait;
 use macroquad::prelude::*;
 
-pub struct ResultScreen {
-    pub title: String,
-    pub difficulty: String,
+pub struct ResultScreen<J: Judgement> {
+    title: String,
+    difficulty: String,
 
-    pub score: u32,
-    pub hit_count: u32,
-    pub miss_count: u32,
-    pub top_combo: u32,
-    pub accuracy: f32,
-    pub passed: bool,
+    score: Score<J>,
 }
 
-impl ResultScreen {
-    pub fn new(score: &CatchScore, title: String, difficulty: String) -> Self {
+impl<J: Judgement> ResultScreen<J> {
+    pub fn new(score: Score<J>, title: String, difficulty: String) -> Self {
         ResultScreen {
             title,
             difficulty,
-            score: score.score,
-            hit_count: score.hit_count,
-            miss_count: score.miss_count,
-            top_combo: score.top_combo,
-            accuracy: score.hit_count as f32 / (score.hit_count + score.miss_count) as f32,
-            passed: score.passed,
+            score,
         }
     }
 }
 
 #[async_trait(?Send)]
-impl Screen for ResultScreen {
+impl<J: Judgement> Screen for ResultScreen<J> {
     fn draw(&self, data: SharedGameData) {
         draw_texture_ex(
             data.background(),
@@ -54,7 +46,11 @@ impl Screen for ResultScreen {
                 "{} [{}] ({})",
                 self.title,
                 self.difficulty,
-                if self.passed { "Passed" } else { "Failed" }
+                if self.score.passed {
+                    "Passed"
+                } else {
+                    "Failed"
+                }
             ),
             screen_width() / 2.,
             screen_height() / 2. - 100.,
@@ -62,28 +58,34 @@ impl Screen for ResultScreen {
             WHITE,
         );
         draw_text_centered(
-            &format!("{}x", self.top_combo),
+            &format!("{}x", self.score.top_combo),
             screen_width() / 2.,
             screen_height() / 2. - 10.,
             36,
             WHITE,
         );
         draw_text_centered(
-            &format!("{}/{}", self.hit_count, self.miss_count),
+            &self
+                .score
+                .judgements
+                .iter()
+                .map(|(_, &count)| count.to_string())
+                .collect::<Vec<String>>()
+                .join("/"),
             screen_width() / 2.,
             screen_height() / 2. + 30.,
             36,
             WHITE,
         );
         draw_text_centered(
-            &format!("{}", self.score),
+            &format!("{}", self.score.score),
             screen_width() / 2.,
             screen_height() / 2. + 70.,
             36,
             WHITE,
         );
         draw_text_centered(
-            &format!("{:.2}%", self.accuracy * 100.),
+            &format!("{:.2}%", score::accuracy(&self.score.judgements) * 100.),
             screen_width() / 2.,
             screen_height() / 2. + 110.,
             36,

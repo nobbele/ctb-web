@@ -28,7 +28,9 @@ pub fn catcher_speed(dashing: bool, hyper_multiplier: f32) -> f32 {
     mov_speed
 }
 
-#[derive(Debug, Hash, Eq, PartialEq, serde::Serialize, serde::Deserialize, Clone)]
+#[derive(
+    Debug, Hash, Eq, PartialEq, serde::Serialize, serde::Deserialize, Clone, PartialOrd, Ord,
+)]
 pub enum CatchJudgement {
     Perfect,
     Miss,
@@ -41,6 +43,17 @@ impl Judgement for CatchJudgement {
 
     fn miss() -> Self {
         Self::Miss
+    }
+
+    fn weight(&self) -> f32 {
+        match self {
+            CatchJudgement::Perfect => 1.0,
+            CatchJudgement::Miss => 0.0,
+        }
+    }
+
+    fn all() -> Vec<Self> {
+        vec![CatchJudgement::Perfect, CatchJudgement::Miss]
     }
 }
 
@@ -257,10 +270,10 @@ impl Screen for Gameplay {
 
             let map_title = data.state().chart.title.clone();
             let diff_title = data.state().difficulty().name.clone();
+            data.send_server(ClientPacket::Submit(score.clone()));
             data.broadcast(GameMessage::change_screen(ResultScreen::new(
-                &score, map_title, diff_title,
+                score, map_title, diff_title,
             )));
-            data.send_server(ClientPacket::Submit(score));
         }
 
         if is_key_pressed(KeyCode::O) {

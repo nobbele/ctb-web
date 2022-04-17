@@ -1,23 +1,32 @@
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, hash::Hash};
+use std::{collections::BTreeMap, hash::Hash};
 
-pub trait Judgement: Hash + Eq + Clone {
+pub trait Judgement: Hash + Eq + Clone + PartialOrd + Ord {
     fn hit(inaccuracy: f32) -> Self;
     fn miss() -> Self;
+    fn weight(&self) -> f32;
+    fn all() -> Vec<Self>;
 
     fn is_miss(&self) -> bool {
         self == &Self::miss()
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+pub fn accuracy<J: Judgement>(judgements: &BTreeMap<J, u32>) -> f32 {
+    let weight_sum = judgements
+        .iter()
+        .map(|(judgement, &count)| judgement.weight() * count as f32)
+        .sum::<f32>();
+    let max_weight = judgements.iter().map(|(_, &count)| count).sum::<u32>() as f32;
+    weight_sum / max_weight
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Score<J: Judgement> {
     pub username: Option<String>,
     pub diff_id: u32,
     pub top_combo: u32,
-    pub hit_count: u32,
-    pub miss_count: u32,
-    pub judgements: HashMap<J, u32>,
+    pub judgements: BTreeMap<J, u32>,
     pub score: u32,
     pub passed: bool,
 }
@@ -27,10 +36,8 @@ pub struct ScoreRecorder<J: Judgement> {
     pub top_combo: u32,
     pub max_combo: u32,
 
-    pub hit_count: u32,
-    pub miss_count: u32,
-
-    pub judgements: HashMap<J, u32>,
+    pub judgements: BTreeMap<J, u32>,
+    pub weight_sum: f32,
 
     /// This needs to be tracked separately due to floating point imprecision.
     pub internal_score: f64,
@@ -54,14 +61,16 @@ impl<J: Judgement> ScoreRecorder<J> {
             combo: 0,
             top_combo: 0,
             max_combo,
-            hit_count: 0,
-            miss_count: 0,
-            judgements: HashMap::new(),
+            judgements: J::all()
+                .into_iter()
+                .map(|judgement| (judgement, 0))
+                .collect(),
+            weight_sum: 0.,
             internal_score: 0.,
             chain_miss_count: 0,
             score: 0,
-            accuracy: 1.0,
-            hp: 1.0,
+            accuracy: 1.,
+            hp: 1.,
         }
     }
 
@@ -73,14 +82,12 @@ impl<J: Judgement> ScoreRecorder<J> {
             self.internal_score += self.combo as f64 / self.max_combo as f64;
             self.score = (self.internal_score * 1_000_000. * 2. / (self.max_combo as f64 + 1.))
                 .round() as u32;
-            self.hit_count += 1;
             self.chain_miss_count = 0;
 
             self.hp += (self.combo as f32 / self.max_combo as f32) * 0.1;
             self.hp = self.hp.min(1.0);
         } else {
             self.combo = 0;
-            self.miss_count += 1;
 
             #[allow(clippy::excessive_precision)]
             let hp_drain = polynomial(
@@ -103,7 +110,8 @@ impl<J: Judgement> ScoreRecorder<J> {
             self.chain_miss_count += 1;
         }
 
-        self.accuracy = self.hit_count as f32 / (self.hit_count + self.miss_count) as f32;
+        *self.judgements.get_mut(&judgement).unwrap() += 1;
+        self.accuracy = accuracy(&self.judgements);
     }
 
     pub fn to_score(&self, diff_id: u32) -> Score<J> {
@@ -111,8 +119,6 @@ impl<J: Judgement> ScoreRecorder<J> {
             username: None,
             diff_id,
             top_combo: self.top_combo,
-            hit_count: self.hit_count,
-            miss_count: self.miss_count,
             score: self.score,
             passed: self.hp > 0.5,
             judgements: self.judgements.clone(),
