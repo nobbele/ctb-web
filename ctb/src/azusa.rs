@@ -33,22 +33,34 @@ pub enum ClientPacket {
 pub struct Azusa {
     ws: WebSocket,
     connected: bool,
+    logging_in: bool,
 
     data: SharedGameData,
+    token: uuid::Uuid,
 }
 
 impl Azusa {
-    pub async fn new(data: SharedGameData) -> Self {
+    pub async fn new(data: SharedGameData, token: uuid::Uuid) -> Self {
         let ws = WebSocket::new(data.clone(), vec!["ws://127.0.0.1:3012", "ws://azusa.null"]);
         Azusa {
             ws,
             connected: false,
-
+            logging_in: false,
+            token,
             data,
         }
     }
 
     pub fn receive(&mut self) -> Vec<ServerPacket> {
+        if self.ws.status() != ConnectionStatus::Connected && self.connected {
+            self.set_connected(false);
+        }
+
+        if self.ws.status() == ConnectionStatus::Connected && !self.connected && !self.logging_in {
+            self.send(&ClientPacket::Login(self.token.clone()));
+            self.logging_in = true;
+        }
+
         self.ws
             .poll()
             .unwrap_or_else(|e| {
@@ -66,10 +78,11 @@ impl Azusa {
     pub fn set_connected(&mut self, status: bool) {
         log_to!(self.data.network, "Azusa connected status: {}", status);
         self.connected = status;
+        self.logging_in = false;
     }
 
     pub fn connected(&self) -> bool {
-        self.ws.status() == ConnectionStatus::Connected
+        self.connected
     }
 
     pub fn send(&self, message: &ClientPacket) {

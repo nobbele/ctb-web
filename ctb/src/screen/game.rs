@@ -66,7 +66,7 @@ pub struct Game {
     pub data: SharedGameData,
     screen: Box<dyn Screen>,
     overlay: Option<OverlayEnum>,
-    azusa: Azusa,
+    azusa: Option<Azusa>,
     prev_time: f32,
     audio_deltas: ConstGenericRingBuffer<f32, 8>,
     packet_rx: flume::Receiver<ClientPacket>,
@@ -86,7 +86,7 @@ impl Game {
         let network = logger
             .init_endpoint(LogType::Network)
             //.path("data/network.log")
-            .print(false)
+            .print(true)
             .build();
         let audio_performance = logger
             .init_endpoint(LogType::AudioPerformance)
@@ -173,14 +173,12 @@ impl Game {
             audio_performance,
         });
 
-        let azusa = Azusa::new(data.clone()).await;
-
-        // TODO this has to be sent on every connect.
-        if let Some(token) = token {
-            azusa.send(&ClientPacket::Login(token));
+        let azusa = if let Some(token) = token {
+            Some(Azusa::new(data.clone(), token).await)
         } else {
             set_value("token", "SET TOKEN HERE");
-        }
+            None
+        };
 
         Game {
             logger,
@@ -252,13 +250,15 @@ impl Game {
             }
         }
 
-        if self.azusa.connected() && is_key_pressed(KeyCode::F9) {
-            if let Some(OverlayEnum::Chat(_)) = self.overlay {
-                log_to!(self.data.general, "Closing chat overlay");
-                self.overlay = None;
-            } else {
-                log_to!(self.data.general, "Opening chat overlay");
-                self.overlay = Some(OverlayEnum::Chat(overlay::Chat::new()));
+        if let Some(azusa) = &self.azusa {
+            if azusa.connected() && is_key_pressed(KeyCode::F9) {
+                if let Some(OverlayEnum::Chat(_)) = self.overlay {
+                    log_to!(self.data.general, "Closing chat overlay");
+                    self.overlay = None;
+                } else {
+                    log_to!(self.data.general, "Opening chat overlay");
+                    self.overlay = Some(OverlayEnum::Chat(overlay::Chat::new()));
+                }
             }
         }
 
@@ -333,37 +333,39 @@ impl Game {
             }
         }
 
-        for msg in self.packet_rx.drain() {
-            self.azusa.send(&msg);
-        }
+        if let Some(azusa) = &mut self.azusa {
+            if azusa.connected() {
+                for msg in self.packet_rx.drain() {
+                    azusa.send(&msg);
+                }
 
-        if self.azusa.connected() {
-            let time_since_ping = get_time() - self.last_ping;
-            if time_since_ping > 15.0 && !self.sent_ping {
-                self.azusa.send(&ClientPacket::Ping);
-                self.sent_ping = true;
+                let time_since_ping = get_time() - self.last_ping;
+                if time_since_ping > 15.0 && !self.sent_ping {
+                    azusa.send(&ClientPacket::Ping);
+                    self.sent_ping = true;
+                }
+                if time_since_ping > 30.0 && azusa.connected() {
+                    azusa.set_connected(false);
+                }
             }
-            if time_since_ping > 30.0 && self.azusa.connected() {
-                self.azusa.set_connected(false);
-            }
-        }
 
-        for msg in self.azusa.receive() {
-            self.screen.handle_packet(self.data.clone(), &msg);
-            match msg {
-                ServerPacket::Connected => {
-                    log_to!(self.data.network, "Connected to Azusa!");
-                    self.azusa.set_connected(true);
+            for msg in azusa.receive() {
+                self.screen.handle_packet(self.data.clone(), &msg);
+                match msg {
+                    ServerPacket::Connected => {
+                        log_to!(self.data.network, "Connected to Azusa!");
+                        azusa.set_connected(true);
+                    }
+                    ServerPacket::Echo(s) => {
+                        log_to!(self.data.network, "Azusa says '{}'", s);
+                    }
+                    ServerPacket::Pong => {
+                        self.last_ping = get_time();
+                        self.sent_ping = false;
+                    }
+                    ServerPacket::Chat(packet) => self.data.state_mut().chat.handle_packet(packet),
+                    _ => {}
                 }
-                ServerPacket::Echo(s) => {
-                    log_to!(self.data.network, "Azusa says '{}'", s);
-                }
-                ServerPacket::Pong => {
-                    self.last_ping = get_time();
-                    self.sent_ping = false;
-                }
-                ServerPacket::Chat(packet) => self.data.state_mut().chat.handle_packet(packet),
-                _ => {}
             }
         }
 
