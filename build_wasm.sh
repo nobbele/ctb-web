@@ -107,11 +107,11 @@ END
 )
 
 # Build
-cargo build --target wasm32-unknown-unknown --release --bin ctb
+cargo build --target wasm32-unknown-unknown --bin ctb
 
 # Generate bindgen outputs
 mkdir -p dist
-wasm-bindgen target/wasm32-unknown-unknown/release/$PROJECT_NAME.wasm --out-dir dist --target web --no-typescript
+wasm-bindgen target/wasm32-unknown-unknown/debug/$PROJECT_NAME.wasm --out-dir dist --target web --no-typescript
 
 # Shim to tie the thing together
 sed -i "s/import \* as __wbg_star0 from 'env';//" dist/$PROJECT_NAME.js

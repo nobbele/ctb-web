@@ -1,17 +1,18 @@
+// TODO Investigate whether we need all the atomics and mutexes here.
+use super::{ConnectionStatus, WebSocketInterface};
+use crate::web_socket::SharedGameData;
+use macroquad::prelude::*;
+use parking_lot::Mutex;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
 };
-
-use super::{ConnectionStatus, WebSocketInterface};
-use macroquad::prelude::*;
-use parking_lot::Mutex;
 use wasm_bindgen::{prelude::*, JsCast};
 
 pub struct WebSocket {
     connected: Arc<AtomicBool>,
     error: Arc<Mutex<Option<String>>>,
-    ws: web_sys::WebSocket,
+    ws: Option<web_sys::WebSocket>,
 
     rx: flume::Receiver<Vec<u8>>,
 
@@ -19,9 +20,28 @@ pub struct WebSocket {
 }
 
 impl WebSocketInterface for WebSocket {
-    fn connect(addr: impl Into<String>) -> Self {
-        let addr = addr.into();
-        let ws = web_sys::WebSocket::new(&addr).unwrap();
+    fn new(_data: SharedGameData) -> Self {
+        // Broken channel
+        let (_, rx) = flume::unbounded();
+        WebSocket {
+            connected: Arc::new(AtomicBool::new(false)),
+            error: Arc::new(Mutex::new(None)),
+            ws: None,
+            rx,
+            send_queue: flume::unbounded(),
+        }
+    }
+
+    fn reset(&mut self) {
+        // Broken channel
+        (_, self.rx) = flume::unbounded();
+        self.connected.store(false, Ordering::Relaxed);
+        self.ws = None;
+        *self.error.lock() = None;
+    }
+
+    fn connect(&mut self, addr: &str) {
+        let ws = web_sys::WebSocket::new(addr).unwrap();
         ws.set_binary_type(web_sys::BinaryType::Blob);
 
         let (tx, rx) = flume::unbounded();
@@ -45,39 +65,35 @@ impl WebSocketInterface for WebSocket {
         ws.set_onmessage(Some(onmessage_callback.as_ref().unchecked_ref()));
         onmessage_callback.forget();
 
-        let error = Arc::new(Mutex::new(None));
-
-        let error_clone = error.clone();
+        let error = Arc::clone(&self.error);
         let onerror_callback = Closure::wrap(Box::new(move |e: web_sys::ErrorEvent| {
             info!("Socket error: {:?}", e);
-            *error_clone.lock() = Some(e.message());
+            *error.lock() = Some(e.message());
         }) as Box<dyn FnMut(web_sys::ErrorEvent)>);
         ws.set_onerror(Some(onerror_callback.as_ref().unchecked_ref()));
         onerror_callback.forget();
 
-        let connected = Arc::new(AtomicBool::new(false));
-
-        let cloned_connected = connected.clone();
+        let connected = Arc::clone(&self.connected);
         let onopen_callback = Closure::wrap(Box::new(move |_| {
             info!("Socket opened..");
-            cloned_connected.store(true, Ordering::Relaxed);
+            connected.store(true, Ordering::Relaxed);
         }) as Box<dyn FnMut(JsValue)>);
         ws.set_onopen(Some(onopen_callback.as_ref().unchecked_ref()));
         onopen_callback.forget();
 
-        WebSocket {
-            connected,
-            error,
-            ws,
-            rx,
-            send_queue: flume::unbounded(),
-        }
+        self.ws = Some(ws);
+        self.rx = rx;
     }
 
     fn poll(&mut self) -> Result<Vec<Vec<u8>>, String> {
+        if let Some(e) = self.error.lock().take() {
+            self.connected.store(false, Ordering::Relaxed);
+            return Err(format!("Web Socket Error: {}", e));
+        }
+
         if self.status() == ConnectionStatus::Connected {
             for data in self.send_queue.1.drain() {
-                self.ws.send_with_u8_array(&data).unwrap();
+                self.ws.as_mut().unwrap().send_with_u8_array(&data).unwrap();
             }
         }
 
@@ -89,10 +105,10 @@ impl WebSocketInterface for WebSocket {
     }
 
     fn status(&self) -> ConnectionStatus {
-        if self.error.lock().is_some() {
-            ConnectionStatus::Error
-        } else if self.connected.load(Ordering::Relaxed) {
+        if self.connected.load(Ordering::Relaxed) {
             ConnectionStatus::Connected
+        } else if self.ws.is_some() {
+            ConnectionStatus::Connecting
         } else {
             ConnectionStatus::Disconnected
         }

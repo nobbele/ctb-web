@@ -1,6 +1,7 @@
-use crate::screen::gameplay::{CatchJudgement, CatchScore};
+use crate::screen::gameplay::CatchScore;
 #[cfg(not(target_family = "wasm"))]
 use {
+    crate::screen::gameplay::CatchJudgement,
     gluesql::prelude::{Glue, Payload, SledStorage, Value},
     std::{collections::HashMap, ops::Deref},
 };
@@ -84,9 +85,9 @@ impl Leaderboard {
         Leaderboard {}
     }
 
-    pub async fn submit_score(&mut self, _score: &Score) {}
+    pub async fn submit_score(&mut self, _score: &CatchScore) {}
 
-    pub async fn get_local(&mut self, _diff_id: u32) -> Vec<LeaderboardEntry> {
+    pub async fn query_local(&mut self, _diff_id: u32) -> Vec<LeaderboardEntry> {
         Vec::new()
     }
 }

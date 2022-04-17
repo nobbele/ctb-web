@@ -19,19 +19,13 @@ pub trait WebSocketInterface {
     fn status(&self) -> ConnectionStatus;
 }
 
-use std::{
-    time::{Duration, Instant},
-};
+use crate::{log_to, screen::game::SharedGameData};
+use instant::{Duration, Instant};
 
 #[cfg(not(target_arch = "wasm32"))]
 use native::WebSocket as WebSocketImpl;
 #[cfg(target_arch = "wasm32")]
 use web::WebSocket as WebSocketImpl;
-
-use crate::{
-    log_to,
-    screen::{game::SharedGameData},
-};
 
 pub struct WebSocket {
     data: SharedGameData,

@@ -1,9 +1,5 @@
-use std::{
-    fs::{File, OpenOptions},
-    io::Write,
-    path::Path,
-    time::{Duration, Instant},
-};
+use instant::{Duration, Instant, SystemTime};
+use std::{fs::File, io::Write, path::Path};
 
 #[macro_export]
 macro_rules! log_to {
@@ -53,16 +49,22 @@ impl<'a> LogEndpointBuilder<'a> {
         self
     }
 
+    #[allow(unused_mut, unused_variables)]
     pub fn path(mut self, path: impl AsRef<Path>) -> Self {
-        self.file = Some(
-            OpenOptions::new()
-                .write(true)
-                .create(true)
-                .truncate(true)
-                .read(true)
-                .open(path)
-                .unwrap(),
-        );
+        // Ignore file if we are running on web.
+        #[cfg(not(target_family = "wasm"))]
+        {
+            use std::fs::OpenOptions;
+            self.file = Some(
+                OpenOptions::new()
+                    .write(true)
+                    .create(true)
+                    .truncate(true)
+                    .read(true)
+                    .open(path)
+                    .unwrap(),
+            );
+        }
         self
     }
 
@@ -80,8 +82,8 @@ impl<'a> LogEndpointBuilder<'a> {
                 Box::new(|s, endpoint| {
                     format!(
                         "/{}/ [{:?}] {}",
-                        std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
+                        SystemTime::now()
+                            .duration_since(SystemTime::UNIX_EPOCH)
                             .unwrap()
                             .as_secs(),
                         endpoint.ty,
