@@ -78,7 +78,11 @@ pub struct Gameplay {
     deref_delete: Vec<usize>,
 
     time_countdown: f32,
+    fade_out: f32,
     started: bool,
+    ended: bool,
+
+    paused: bool,
 }
 
 impl Gameplay {
@@ -99,6 +103,10 @@ impl Gameplay {
                 &format!("resources/{}/audio.wav", chart_name),
             )
             .await;
+
+        // Time from the last fruit to the end of the music.
+        let time_to_end = sound.duration() as f32 - chart.fruits.last().unwrap().time;
+
         data.broadcast(GameMessage::update_music(sound));
         data.broadcast(GameMessage::PauseMusic);
 
@@ -125,6 +133,9 @@ impl Gameplay {
             use_predicted_time: true,
             time_countdown,
             started: false,
+            fade_out: time_to_end.max(1.).min(3.),
+            ended: false,
+            paused: false,
         }
     }
 
@@ -226,17 +237,22 @@ impl Screen for Gameplay {
                     data.panning().1,
                     self.position,
                 );
-                data.hit_normal
-                    .borrow_mut()
-                    .play(
-                        kira::instance::InstanceSettings::default()
-                            .volume(data.total_hitsound_volume() as f64)
-                            .panning(player_position_panning as f64),
-                    )
-                    .unwrap();
 
                 self.recorder.register_judgement(CatchJudgement::Perfect);
                 self.deref_delete.push(idx);
+
+                self.hyper_multiplier = fruit.hyper.unwrap_or(1.);
+
+                if !fruit.small {
+                    data.hit_normal
+                        .borrow_mut()
+                        .play(
+                            kira::instance::InstanceSettings::default()
+                                .volume(data.total_hitsound_volume() as f64)
+                                .panning(player_position_panning as f64),
+                        )
+                        .unwrap();
+                }
             }
             if miss {
                 if self.recorder.combo >= 8 {
@@ -252,28 +268,31 @@ impl Screen for Gameplay {
                 self.recorder.register_judgement(CatchJudgement::Miss);
                 self.deref_delete.push(idx);
             }
-            if hit || miss {
-                self.hyper_multiplier = fruit.hyper.unwrap_or(1.);
-            }
         }
 
         for idx in self.deref_delete.drain(..).rev() {
             self.queued_fruits.remove(idx);
         }
 
-        if self.queued_fruits.is_empty() {
-            let diff_id = data.state().difficulty().id;
-            let score = self.recorder.to_score(diff_id);
-            if score.passed {
-                data.state_mut().leaderboard.submit_score(&score).await;
-            }
+        if self.queued_fruits.is_empty() && !self.ended {
+            self.fade_out -= get_frame_time();
 
-            let map_title = data.state().chart.title.clone();
-            let diff_title = data.state().difficulty().name.clone();
-            data.send_server(ClientPacket::Submit(score.clone()));
-            data.broadcast(GameMessage::change_screen(ResultScreen::new(
-                score, map_title, diff_title,
-            )));
+            if self.fade_out <= 0. {
+                let diff_id = data.state().difficulty().id;
+                let score = self.recorder.to_score(diff_id);
+                if score.passed {
+                    data.state_mut().leaderboard.submit_score(&score).await;
+                }
+
+                let map_title = data.state().chart.title.clone();
+                let diff_title = data.state().difficulty().name.clone();
+                data.send_server(ClientPacket::Submit(score.clone()));
+                data.broadcast(GameMessage::change_screen(ResultScreen::new(
+                    score, map_title, diff_title,
+                )));
+
+                self.ended = true;
+            }
         }
 
         if is_key_pressed(KeyCode::O) {
@@ -282,8 +301,17 @@ impl Screen for Gameplay {
         if is_key_pressed(KeyCode::P) {
             self.use_predicted_time = !self.use_predicted_time;
         }
-        if is_key_pressed(KeyCode::Escape) {
+        if is_key_pressed(KeyCode::End) {
             data.broadcast(GameMessage::change_screen(SelectScreen::new(data.clone())));
+        }
+        if is_key_pressed(KeyCode::Escape) {
+            self.paused = !self.paused;
+
+            if self.paused {
+                data.broadcast(GameMessage::PauseMusic);
+            } else {
+                data.broadcast(GameMessage::ResumeMusic);
+            }
         }
     }
 

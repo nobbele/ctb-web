@@ -18,7 +18,7 @@ use crate::{
 use kira::{
     instance::{
         InstanceLoopStart, InstanceSettings, InstanceState, PauseInstanceSettings,
-        StopInstanceSettings,
+        ResumeInstanceSettings, StopInstanceSettings,
     },
     manager::{AudioManager, AudioManagerSettings},
     sound::handle::SoundHandle,
@@ -35,6 +35,7 @@ pub enum GameMessage {
     ChangeScreen(Box<dyn Screen>),
     UpdateMusic { handle: SoundHandle, looping: bool },
     PauseMusic,
+    ResumeMusic,
     SetMasterVolume(f32),
     SetHitsoundVolume(f32),
 }
@@ -315,6 +316,12 @@ impl Game {
                     .state_mut()
                     .music
                     .pause(PauseInstanceSettings::new())
+                    .unwrap(),
+                GameMessage::ResumeMusic => self
+                    .data
+                    .state_mut()
+                    .music
+                    .resume(ResumeInstanceSettings::new())
                     .unwrap(),
                 GameMessage::SetMasterVolume(volume) => {
                     self.volume = volume;
