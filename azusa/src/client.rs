@@ -2,10 +2,10 @@ use crate::app::{App, Target};
 use ctb::{
     azusa::{ClientPacket, ServerPacket},
     chat::{ChatMessage, ChatMessagePacket},
-    screen::gameplay::CatchScore,
+    screen::gameplay::{CatchJudgement, CatchScore},
 };
 use sqlx::Row;
-use std::{collections::HashMap, time::Instant};
+use std::{collections::BTreeMap, time::Instant};
 
 pub struct Client {
     last_ping: Instant,
@@ -69,8 +69,8 @@ impl Client {
                 sqlx::query("INSERT INTO scores(user_id, diff_id, hit_count, miss_count, score, top_combo) VALUES ($1, $2, $3, $4, $5, $6)")
                 .bind(self.user_id)
                 .bind(score.diff_id)
-                .bind(score.hit_count)
-                .bind(score.miss_count)
+                .bind(score.judgements[&CatchJudgement::Perfect])
+                .bind(score.judgements[&CatchJudgement::Miss])
                 .bind(score.score)
                 .bind(score.top_combo).execute(&self.app.pool).await.unwrap();
             }
@@ -94,12 +94,16 @@ impl Client {
                     CatchScore {
                         username: Some(username),
                         diff_id,
-                        hit_count: hit_count.try_into().unwrap(),
-                        miss_count: miss_count.try_into().unwrap(),
                         score: score.try_into().unwrap(),
                         top_combo: top_combo.try_into().unwrap(),
                         passed: true,
-                        judgements: HashMap::new(),
+                        judgements: {
+                            let mut judgements = BTreeMap::new();
+                            judgements
+                                .insert(CatchJudgement::Perfect, hit_count.try_into().unwrap());
+                            judgements.insert(CatchJudgement::Miss, miss_count.try_into().unwrap());
+                            judgements
+                        },
                     }
                 })
                 .fetch_all(&self.app.pool)
