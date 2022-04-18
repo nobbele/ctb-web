@@ -86,6 +86,9 @@ pub struct Game {
 
 impl Game {
     pub async fn new() -> Self {
+        #[cfg(not(target_family = "wasm"))]
+        std::fs::create_dir_all("data").unwrap();
+
         let mut logger = Logger::new(Duration::from_secs(2));
         let general = logger
             .init_endpoint(LogType::General)

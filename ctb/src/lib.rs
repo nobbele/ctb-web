@@ -16,6 +16,7 @@ pub mod leaderboard;
 pub mod log;
 pub mod math;
 pub mod promise;
+pub mod rulesets;
 pub mod score;
 pub mod screen;
 pub mod ui;

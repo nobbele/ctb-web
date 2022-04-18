@@ -1,4 +1,4 @@
-use crate::screen::gameplay::catcher_speed;
+use crate::rulesets::catch::catcher_speed;
 
 #[derive(Debug, Copy, Clone)]
 pub struct Fruit {

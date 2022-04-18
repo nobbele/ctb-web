@@ -2,7 +2,7 @@ use crate::app::{App, Target};
 use ctb::{
     azusa::{ClientPacket, ServerPacket},
     chat::{ChatMessage, ChatMessagePacket},
-    screen::gameplay::{CatchJudgement, CatchScore},
+    rulesets::catch::{CatchJudgement, CatchScore},
 };
 use sqlx::Row;
 use std::{collections::BTreeMap, time::Instant};

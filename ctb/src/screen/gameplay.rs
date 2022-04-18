@@ -8,75 +8,31 @@ use crate::{
     azusa::ClientPacket,
     chart::Chart,
     draw_text_centered, math,
-    score::{Judgement, Score, ScoreRecorder},
+    rulesets::{
+        catch::{catcher_speed, CatchInput, CatchRuleset},
+        Ruleset,
+    },
+    score::{Judgement, ScoreRecorder},
 };
 use async_trait::async_trait;
 use kira::tween::Tween;
 use macroquad::prelude::*;
 use num_format::{Locale, ToFormattedString};
-use std::ops::Add;
 
-pub fn can_catch_fruit(catcher_hitbox: Rect, fruit_hitbox: Rect) -> bool {
-    catcher_hitbox.intersect(fruit_hitbox).is_some()
-}
-
-pub fn catcher_speed(dashing: bool, hyper_multiplier: f32) -> f32 {
-    let mut mov_speed = 500.;
-    if dashing {
-        mov_speed *= 2. * hyper_multiplier;
-    }
-    mov_speed
-}
-
-#[derive(
-    Debug, Hash, Eq, PartialEq, serde::Serialize, serde::Deserialize, Clone, PartialOrd, Ord,
-)]
-pub enum CatchJudgement {
-    Perfect,
-    Miss,
-}
-
-impl Judgement for CatchJudgement {
-    fn hit(_inaccuracy: f32) -> Self {
-        Self::Perfect
-    }
-
-    fn miss() -> Self {
-        Self::Miss
-    }
-
-    fn weight(&self) -> f32 {
-        match self {
-            CatchJudgement::Perfect => 1.0,
-            CatchJudgement::Miss => 0.0,
-        }
-    }
-
-    fn all() -> Vec<Self> {
-        vec![CatchJudgement::Perfect, CatchJudgement::Miss]
-    }
-}
-
-pub type CatchScoreRecorder = ScoreRecorder<CatchJudgement>;
-pub type CatchScore = Score<CatchJudgement>;
-
-pub struct Gameplay {
-    recorder: ScoreRecorder<CatchJudgement>,
+pub struct Gameplay<R: Ruleset> {
+    recorder: ScoreRecorder<R::Judgement>,
+    ruleset: R,
 
     time: f32,
     predicted_time: f32,
 
     prev_time: f32,
-    position: f32,
-    hyper_multiplier: f32,
-
     show_debug_hitbox: bool,
     use_predicted_time: bool,
 
     chart: Chart,
     queued_fruits: Vec<usize>,
-    deref_delete: Vec<usize>,
-
+    //deref_delete: Vec<usize>,
     time_countdown: f32,
     fade_out: f32,
     started: bool,
@@ -85,7 +41,7 @@ pub struct Gameplay {
     paused: bool,
 }
 
-impl Gameplay {
+impl Gameplay<CatchRuleset> {
     pub async fn new(data: SharedGameData, chart_name: &str, diff: &str) -> Self {
         let beatmap_data = load_file(&format!("resources/{}/{}.osu", chart_name, diff))
             .await
@@ -120,13 +76,12 @@ impl Gameplay {
         next_frame().await;
 
         Gameplay {
+            ruleset: CatchRuleset::new(),
             time: -time_countdown,
             predicted_time: -time_countdown,
             prev_time: -time_countdown,
             recorder: ScoreRecorder::new(chart.fruits.len() as u32),
-            position: 256.,
-            hyper_multiplier: 1.,
-            deref_delete: Vec::new(),
+            //deref_delete: Vec::new(),
             queued_fruits: (0..chart.fruits.len()).collect(),
             chart,
             show_debug_hitbox: false,
@@ -139,45 +94,37 @@ impl Gameplay {
         }
     }
 
-    pub fn catcher_y(&self) -> f32 {
+    fn catcher_y(&self) -> f32 {
         screen_height() - 148.
     }
 
-    pub fn fruit_y(&self, time: f32, target: f32) -> f32 {
+    fn fruit_y(&self, time: f32, target: f32) -> f32 {
         let time_left = target - time;
         let progress = 1. - (time_left / self.chart.fall_time);
         self.catcher_y() * progress
     }
 
-    pub fn catcher_speed(&self, dash: KeyCode) -> f32 {
-        catcher_speed(is_key_down(dash), self.hyper_multiplier)
-    }
-
-    pub fn playfield_to_screen_x(&self, x: f32) -> f32 {
+    fn playfield_to_screen_x(&self, x: f32) -> f32 {
         let visual_width = self.playfield_width() * self.scale();
         let playfield_x = screen_width() / 2. - visual_width / 2.;
         playfield_x + x * self.scale()
     }
 
-    pub fn scale(&self) -> f32 {
-        let scale = screen_width() / 512.;
+    fn scale(&self) -> f32 {
+        let scale = screen_width() / self.playfield_width();
         scale * 2. / 3.
     }
 
-    pub fn playfield_width(&self) -> f32 {
+    fn playfield_width(&self) -> f32 {
         512.
-    }
-
-    pub fn movement_direction(&self, left: KeyCode, right: KeyCode) -> i32 {
-        is_key_down(right) as i32 - is_key_down(left) as i32
     }
 }
 
 #[async_trait(?Send)]
-impl Screen for Gameplay {
+impl Screen for Gameplay<CatchRuleset> {
     async fn update(&mut self, data: SharedGameData) {
         let binds = data.state().binds;
-        let catcher_y = self.catcher_y();
+        //let catcher_y = self.catcher_y();
 
         if !self.started {
             self.prev_time = self.time;
@@ -195,76 +142,60 @@ impl Screen for Gameplay {
             self.predicted_time = data.predicted_time();
         }
 
-        self.position = self
-            .position
-            .add(
-                self.movement_direction(binds.left, binds.right) as f32
-                    * self.catcher_speed(binds.dash)
-                    * get_frame_time(),
-            )
-            .clamp(0., self.playfield_width());
+        let mut defer_delete = Vec::new();
 
-        let fruit_travel_distance = self.fruit_y(self.time, 0.) - self.fruit_y(self.prev_time, 0.);
-
-        let catcher_hitbox = Rect::new(
-            self.position - self.chart.catcher_width / 2.,
-            catcher_y - fruit_travel_distance / 2.,
-            self.chart.catcher_width,
-            fruit_travel_distance,
-        );
-
-        for (idx, fruit) in self.queued_fruits.iter().enumerate() {
-            let fruit = self.chart.fruits[*fruit];
-            // Last frame hitbox.
-            let fruit_hitbox = Rect::new(
-                fruit.position - self.chart.fruit_radius,
-                self.fruit_y(self.prev_time, fruit.time) - fruit_travel_distance / 2.,
-                self.chart.fruit_radius * 2.,
-                fruit_travel_distance,
-            );
-            let hit = can_catch_fruit(catcher_hitbox, fruit_hitbox);
-            let miss = fruit_hitbox.y >= screen_height();
-            assert!(!(hit && miss), "Can't hit and miss at the same time!");
-
-            if hit {
-                let player_position_panning = math::remap(
-                    0.,
-                    self.playfield_width(),
-                    data.panning().0,
-                    data.panning().1,
-                    self.position,
-                );
-
-                self.recorder.register_judgement(CatchJudgement::Perfect);
-                self.deref_delete.push(idx);
-
-                self.hyper_multiplier = fruit.hyper.unwrap_or(1.);
-
-                if !fruit.small {
-                    let mut hitsound = data
-                        .audio
-                        .borrow_mut()
-                        .play(data.hit_normal.clone())
-                        .unwrap();
-                    hitsound
-                        .set_panning(player_position_panning as f64, Tween::default())
-                        .unwrap();
+        let audio_dt = self.time - self.prev_time;
+        for (idx, &fruit_idx) in self.queued_fruits.iter().enumerate() {
+            let fruit = self.chart.fruits[fruit_idx];
+            if let Some(judgement) =
+                self.ruleset
+                    .test_hitobject(audio_dt, self.time, fruit, &self.chart)
+            {
+                if judgement.is_hit() {
+                    if !fruit.small {
+                        let panning = math::remap(
+                            0.,
+                            self.playfield_width(),
+                            data.panning().0,
+                            data.panning().1,
+                            self.ruleset.position,
+                        );
+                        let mut hitsound = data
+                            .audio
+                            .borrow_mut()
+                            .play(data.hit_normal.clone())
+                            .unwrap();
+                        hitsound
+                            .set_panning(panning as f64, Tween::default())
+                            .unwrap();
+                    }
+                } else {
+                    if self.recorder.combo >= 8 {
+                        data.audio
+                            .borrow_mut()
+                            .play(data.combo_break.clone())
+                            .unwrap();
+                    }
                 }
-            }
-            if miss {
-                if self.recorder.combo >= 8 {
-                    data.audio
-                        .borrow_mut()
-                        .play(data.combo_break.clone())
-                        .unwrap();
-                }
-
-                self.recorder.register_judgement(CatchJudgement::Miss);
-                self.deref_delete.push(idx);
+                defer_delete.push(idx);
+                self.recorder.register_judgement(judgement);
             }
         }
 
-        for idx in self.deref_delete.drain(..).rev() {
+        self.ruleset.update(
+            get_frame_time(),
+            CatchInput {
+                left: is_key_down(binds.left),
+                right: is_key_down(binds.right),
+                dash: is_key_down(binds.dash),
+            },
+            &defer_delete
+                .iter()
+                .map(|&idx| self.chart.fruits[self.queued_fruits[idx]])
+                .collect::<Vec<_>>(),
+        );
+
+        for idx in defer_delete.into_iter().rev() {
             self.queued_fruits.remove(idx);
         }
 
@@ -340,7 +271,7 @@ impl Screen for Gameplay {
 
         let fruit_travel_distance = self.fruit_y(self.time, 0.) - self.fruit_y(self.prev_time, 0.);
         let catcher_hitbox = Rect::new(
-            self.position - self.chart.catcher_width / 2.,
+            self.ruleset.position - self.chart.catcher_width / 2.,
             self.catcher_y() - fruit_travel_distance / 2.,
             self.chart.catcher_width,
             fruit_travel_distance,
@@ -360,7 +291,7 @@ impl Screen for Gameplay {
                 // queued_fruits are in spawn/hit order currently.
                 // I may change it in the future.
                 // but for now this exists to improve performance.
-                //break;
+                break;
             }
 
             let mut radius = self.chart.fruit_radius * self.scale();
@@ -419,7 +350,7 @@ impl Screen for Gameplay {
         }
         draw_texture_ex(
             data.catcher,
-            self.playfield_to_screen_x(self.position)
+            self.playfield_to_screen_x(self.ruleset.position)
                 - self.chart.catcher_width * self.scale() / 2.,
             self.catcher_y(),
             WHITE,

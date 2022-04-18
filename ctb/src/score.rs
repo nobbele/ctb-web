@@ -10,6 +10,9 @@ pub trait Judgement: Hash + Eq + Clone + PartialOrd + Ord {
     fn is_miss(&self) -> bool {
         self == &Self::miss()
     }
+    fn is_hit(&self) -> bool {
+        self != &Self::miss()
+    }
 }
 
 pub fn accuracy<J: Judgement>(judgements: &BTreeMap<J, u32>) -> f32 {
@@ -128,7 +131,7 @@ impl<J: Judgement> ScoreRecorder<J> {
 
 #[test]
 fn test_score_recorder_limits() {
-    use crate::screen::gameplay::CatchJudgement;
+    use crate::rulesets::catch::CatchJudgement;
     for max_combo in 1..4000 {
         dbg!(max_combo);
         let mut recorder = ScoreRecorder::new(max_combo);
@@ -141,7 +144,7 @@ fn test_score_recorder_limits() {
 
 #[test]
 fn test_hp() {
-    use crate::screen::gameplay::CatchJudgement;
+    use crate::rulesets::catch::CatchJudgement;
     let mut recorder = ScoreRecorder::new(100);
     assert_eq!(recorder.hp, 1.0);
     for _ in 0..10 {

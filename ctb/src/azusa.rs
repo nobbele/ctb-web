@@ -1,8 +1,8 @@
 use crate::log_to;
+use crate::rulesets::catch::CatchScore;
 use crate::screen::game::SharedGameData;
 
 use crate::chat::ChatMessagePacket;
-use crate::screen::gameplay::CatchScore;
 use crate::web_socket::{ConnectionStatus, WebSocket};
 use macroquad::prelude::*;
 use serde::{Deserialize, Serialize};
