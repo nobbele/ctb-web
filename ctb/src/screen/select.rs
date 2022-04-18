@@ -15,7 +15,7 @@ use crate::{
     },
 };
 use async_trait::async_trait;
-use kira::sound::handle::SoundHandle;
+use kira::sound::static_sound::StaticSoundData;
 use macroquad::prelude::*;
 use num_format::{Locale, ToFormattedString};
 
@@ -35,7 +35,7 @@ pub struct SelectScreen {
     scroll_target: Option<f32>,
 
     start: MenuButton,
-    loading_promise: Option<Promise<(SoundHandle, Texture2D)>>,
+    loading_promise: Option<Promise<(StaticSoundData, Texture2D)>>,
 }
 
 impl SelectScreen {
@@ -125,8 +125,8 @@ impl Screen for SelectScreen {
                 let sound = data_clone
                     .audio_cache
                     .get_sound(
-                        &mut data_clone.audio.borrow_mut(),
                         &format!("resources/{}/audio.wav", data_clone.state().chart.title),
+                        data_clone.main_track.id(),
                     )
                     .await;
                 let background = data_clone

@@ -11,7 +11,7 @@ use crate::{
     score::{Judgement, Score, ScoreRecorder},
 };
 use async_trait::async_trait;
-use kira::instance::ResumeInstanceSettings;
+use kira::tween::Tween;
 use macroquad::prelude::*;
 use num_format::{Locale, ToFormattedString};
 use std::ops::Add;
@@ -99,13 +99,13 @@ impl Gameplay {
         let sound = data
             .audio_cache
             .get_sound(
-                &mut *data.audio.borrow_mut(),
                 &format!("resources/{}/audio.wav", chart_name),
+                data.main_track.id(),
             )
             .await;
 
         // Time from the last fruit to the end of the music.
-        let time_to_end = sound.duration() as f32 - chart.fruits.last().unwrap().time;
+        let time_to_end = sound.duration().as_secs_f32() - chart.fruits.last().unwrap().time;
 
         data.broadcast(GameMessage::update_music(sound));
         data.broadcast(GameMessage::PauseMusic);
@@ -186,10 +186,7 @@ impl Screen for Gameplay {
             if self.time_countdown > 0. {
                 self.time_countdown -= get_frame_time();
             } else {
-                data.state_mut()
-                    .music
-                    .resume(ResumeInstanceSettings::new())
-                    .unwrap();
+                data.broadcast(GameMessage::ResumeMusic);
                 self.started = true;
             }
         } else {
@@ -244,24 +241,21 @@ impl Screen for Gameplay {
                 self.hyper_multiplier = fruit.hyper.unwrap_or(1.);
 
                 if !fruit.small {
-                    data.hit_normal
+                    let mut hitsound = data
+                        .audio
                         .borrow_mut()
-                        .play(
-                            kira::instance::InstanceSettings::default()
-                                .volume(data.total_hitsound_volume() as f64)
-                                .panning(player_position_panning as f64),
-                        )
+                        .play(data.hit_normal.clone())
+                        .unwrap();
+                    hitsound
+                        .set_panning(player_position_panning as f64, Tween::default())
                         .unwrap();
                 }
             }
             if miss {
                 if self.recorder.combo >= 8 {
-                    data.combo_break
+                    data.audio
                         .borrow_mut()
-                        .play(
-                            kira::instance::InstanceSettings::new()
-                                .volume(data.total_hitsound_volume() as f64),
-                        )
+                        .play(data.combo_break.clone())
                         .unwrap();
                 }
 

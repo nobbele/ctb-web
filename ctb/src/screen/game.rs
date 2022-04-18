@@ -16,12 +16,13 @@ use crate::{
     promise::PromiseExecutor,
 };
 use kira::{
-    instance::{
-        InstanceLoopStart, InstanceSettings, InstanceState, PauseInstanceSettings,
-        ResumeInstanceSettings, StopInstanceSettings,
-    },
     manager::{AudioManager, AudioManagerSettings},
-    sound::handle::SoundHandle,
+    sound::static_sound::{PlaybackState, StaticSoundData},
+    track::{
+        effect::volume_control::{VolumeControlBuilder, VolumeControlHandle},
+        TrackBuilder, TrackRoutes,
+    },
+    tween::Tween,
 };
 use macroquad::prelude::*;
 use ringbuffer::{ConstGenericRingBuffer, RingBuffer, RingBufferExt, RingBufferWrite};
@@ -33,10 +34,13 @@ use std::{
 
 pub enum GameMessage {
     ChangeScreen(Box<dyn Screen>),
-    UpdateMusic { handle: SoundHandle, looping: bool },
+    UpdateMusic {
+        handle: StaticSoundData,
+        looping: bool,
+    },
     PauseMusic,
     ResumeMusic,
-    SetMasterVolume(f32),
+    SetMainVolume(f32),
     SetHitsoundVolume(f32),
 }
 
@@ -45,14 +49,14 @@ impl GameMessage {
         GameMessage::ChangeScreen(Box::new(screen))
     }
 
-    pub fn update_music(handle: SoundHandle) -> Self {
+    pub fn update_music(handle: StaticSoundData) -> Self {
         GameMessage::UpdateMusic {
             handle,
             looping: false,
         }
     }
 
-    pub fn update_music_looped(handle: SoundHandle) -> Self {
+    pub fn update_music_looped(handle: StaticSoundData) -> Self {
         GameMessage::UpdateMusic {
             handle,
             looping: true,
@@ -74,7 +78,10 @@ pub struct Game {
     game_rx: flume::Receiver<GameMessage>,
     last_ping: f64,
     sent_ping: bool,
-    volume: f32,
+
+    // TODO https://github.com/tesselode/kira/issues/27
+    hitsound_volume_handle: VolumeControlHandle,
+    main_volume_handle: VolumeControlHandle,
 }
 
 impl Game {
@@ -104,12 +111,6 @@ impl Game {
         let audio_cache = Cache::new("data/cache/audio");
         let image_cache = Cache::new("data/cache/image");
 
-        let mut sound = audio_cache
-            .get_sound(&mut audio, "resources/Kizuato/audio.wav")
-            .await;
-
-        let instance = sound.play(InstanceSettings::new().volume(0.)).unwrap();
-
         let first_time = get_value::<bool>("first_time").unwrap_or(true);
         let binds = get_value::<KeyBinds>("binds").unwrap_or(KeyBinds {
             right: KeyCode::D,
@@ -119,18 +120,38 @@ impl Game {
         let token = get_value::<uuid::Uuid>("token");
 
         let panning = get_value::<(f32, f32)>("panning").unwrap_or((0.25, 0.75));
-        let master_volume = get_value("master_volume").unwrap_or(0.25);
+        let main_volume = get_value("main_volume").unwrap_or(0.25);
         let hitsound_volume = get_value("hitsound_volume").unwrap_or(1.0);
 
         let (packet_tx, packet_rx) = flume::unbounded();
         let (game_tx, game_rx) = flume::unbounded();
 
-        let combo_break = audio_cache
-            .get_sound(&mut audio, "resources/combobreak.wav")
+        let (main_track, main_volume_handle) = {
+            let mut builder = TrackBuilder::new();
+            let volume = builder.add_effect(VolumeControlBuilder::new(main_volume as f64));
+            let track = audio.add_sub_track(builder).unwrap();
+            (track, volume)
+        };
+
+        let (hitsound_track, hitsound_volume_handle) = {
+            let mut builder = TrackBuilder::new().routes(TrackRoutes::parent(main_track.id()));
+            let volume = builder.add_effect(VolumeControlBuilder::new(hitsound_volume as f64));
+            let track = audio.add_sub_track(builder).unwrap();
+            (track, volume)
+        };
+
+        let sound = audio_cache
+            .get_sound("resources/Kizuato/audio.wav", main_track.id())
             .await;
 
+        let mut instance = audio.play(sound).unwrap();
+        instance.set_volume(0., Tween::default()).unwrap();
+
+        let combo_break = audio_cache
+            .get_sound("resources/combobreak.wav", hitsound_track.id())
+            .await;
         let hit_normal = audio_cache
-            .get_sound(&mut audio, "resources/hitnormal.wav")
+            .get_sound("resources/hitnormal.wav", hitsound_track.id())
             .await;
 
         let data = Rc::new(GameData {
@@ -140,8 +161,8 @@ impl Game {
             catcher: load_texture("resources/catcher.png").await.unwrap(),
             fruit: load_texture("resources/fruit.png").await.unwrap(),
             default_background: load_texture("resources/default-bg.png").await.unwrap(),
-            combo_break: RefCell::new(combo_break),
-            hit_normal: RefCell::new(hit_normal),
+            combo_break,
+            hit_normal,
             audio: RefCell::new(audio),
             state: RefCell::new(GameState {
                 music: instance,
@@ -163,7 +184,7 @@ impl Game {
             predicted_time: Cell::new(0.),
             background: Cell::new(None),
             panning: Cell::new(panning),
-            master_volume: Cell::new(master_volume),
+            main_volume: Cell::new(main_volume),
             hitsound_volume: Cell::new(hitsound_volume),
             locked_input: Cell::new(false),
             promises: RefCell::new(PromiseExecutor::new()),
@@ -172,6 +193,8 @@ impl Game {
             general,
             network,
             audio_performance,
+            hitsound_track,
+            main_track,
         });
 
         let azusa = if let Some(token) = token {
@@ -197,7 +220,8 @@ impl Game {
             game_rx,
             last_ping: get_time(),
             sent_ping: false,
-            volume: master_volume,
+            hitsound_volume_handle,
+            main_volume_handle,
         }
     }
 
@@ -207,7 +231,7 @@ impl Game {
         let time = self.data.state().music.position() as f32;
         let playing = matches!(
             self.data.state().music.state(),
-            InstanceState::Playing | InstanceState::Stopping | InstanceState::Pausing(_)
+            PlaybackState::Playing | PlaybackState::Stopping | PlaybackState::Pausing
         );
         self.data.time.set(time);
 
@@ -290,51 +314,32 @@ impl Game {
         for msg in self.game_rx.drain() {
             match msg {
                 GameMessage::ChangeScreen(screen) => self.screen = screen,
-                GameMessage::UpdateMusic {
-                    mut handle,
-                    looping,
-                } => {
-                    self.data
-                        .state_mut()
-                        .music
-                        .stop(StopInstanceSettings::new())
-                        .unwrap();
-                    self.data.state_mut().music = handle
-                        .play(
-                            InstanceSettings::default()
-                                .volume(self.volume as f64)
-                                .loop_start(if looping {
-                                    InstanceLoopStart::Custom(0.0)
-                                } else {
-                                    InstanceLoopStart::None
-                                }),
-                        )
-                        .unwrap();
+                GameMessage::UpdateMusic { handle, looping: _ } => {
+                    self.data.state_mut().music.stop(Tween::default()).unwrap();
+                    self.data.state_mut().music =
+                        self.data.audio.borrow_mut().play(handle).unwrap();
                 }
-                GameMessage::PauseMusic => self
-                    .data
-                    .state_mut()
-                    .music
-                    .pause(PauseInstanceSettings::new())
-                    .unwrap(),
+                GameMessage::PauseMusic => {
+                    self.data.state_mut().music.pause(Tween::default()).unwrap()
+                }
                 GameMessage::ResumeMusic => self
                     .data
                     .state_mut()
                     .music
-                    .resume(ResumeInstanceSettings::new())
+                    .resume(Tween::default())
                     .unwrap(),
-                GameMessage::SetMasterVolume(volume) => {
-                    self.volume = volume;
-                    self.data.master_volume.set(volume);
-                    self.data
-                        .state_mut()
-                        .music
-                        .set_volume(volume as f64)
+                GameMessage::SetMainVolume(volume) => {
+                    self.data.main_volume.set(volume);
+                    self.main_volume_handle
+                        .set_volume(volume as f64, Tween::default())
                         .unwrap();
-                    set_value("master_volume", volume);
+                    set_value("main_volume", volume);
                 }
                 GameMessage::SetHitsoundVolume(volume) => {
                     self.data.hitsound_volume.set(volume);
+                    self.hitsound_volume_handle
+                        .set_volume(volume as f64, Tween::default())
+                        .unwrap();
                     set_value("hitsound_volume", volume);
                 }
             }

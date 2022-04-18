@@ -8,7 +8,7 @@ macroquad = { version = "0.3.6", default-features = false }
 osu-types = { path = "../../osu-rs/osu-types" }
 osu-parser = { path = "../../osu-rs/osu-parser" }
 osu-utils = { path = "../../osu-rs/osu-utils" }
-kira = { version = "0.5.3", default-features = false, features = ['wav'] }
+kira = { version = "0.6.0", default-features = false, features = ['cpal', 'wav'] }
 num-format = "0.4.0"
 async-trait = "0.1.52"
 flume = "0.10.10"

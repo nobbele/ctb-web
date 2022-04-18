@@ -8,7 +8,11 @@ use crate::{
     promise::PromiseExecutor,
 };
 use async_trait::async_trait;
-use kira::{instance::handle::InstanceHandle, manager::AudioManager, sound::handle::SoundHandle};
+use kira::{
+    manager::AudioManager,
+    sound::static_sound::{StaticSoundData, StaticSoundHandle},
+    track::TrackHandle,
+};
 use macroquad::prelude::*;
 use std::cell::{Cell, Ref, RefCell, RefMut};
 
@@ -112,7 +116,7 @@ pub trait Screen {
 pub struct GameState {
     pub chart: ChartInfo,
     pub difficulty_idx: usize,
-    pub music: InstanceHandle,
+    pub music: StaticSoundHandle,
     pub audio_frame_skip: u32,
     pub binds: KeyBinds,
 
@@ -132,11 +136,17 @@ pub struct GameData {
     pub fruit: Texture2D,
     pub button: Texture2D,
     pub default_background: Texture2D,
-    // TODO These should not require refcells..
-    pub combo_break: RefCell<SoundHandle>,
-    pub hit_normal: RefCell<SoundHandle>,
+    pub combo_break: StaticSoundData,
+    pub hit_normal: StaticSoundData,
 
-    master_volume: Cell<f32>,
+    // Needs to be kept alive.
+    #[allow(dead_code)]
+    pub hitsound_track: TrackHandle,
+    #[allow(dead_code)]
+    pub main_track: TrackHandle,
+
+    main_volume: Cell<f32>,
+    // Only used to read in settings, otherwise read-only.
     hitsound_volume: Cell<f32>,
     panning: Cell<(f32, f32)>,
 
@@ -144,7 +154,7 @@ pub struct GameData {
     pub network: LogEndpoint,
     pub audio_performance: LogEndpoint,
 
-    pub audio_cache: Cache<SoundHandle>,
+    pub audio_cache: Cache<StaticSoundData>,
     pub image_cache: Cache<Texture2D>,
 
     time: Cell<f32>,
@@ -178,12 +188,8 @@ impl GameData {
         self.predicted_time.get()
     }
 
-    pub fn master_volume(&self) -> f32 {
-        self.master_volume.get()
-    }
-
-    pub fn total_hitsound_volume(&self) -> f32 {
-        self.master_volume() * self.hitsound_volume.get()
+    pub fn main_volume(&self) -> f32 {
+        self.main_volume.get()
     }
 
     pub fn panning(&self) -> (f32, f32) {

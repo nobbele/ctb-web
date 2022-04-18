@@ -5,7 +5,7 @@ use egui_macroquad::egui;
 use macroquad::prelude::*;
 
 pub struct Settings {
-    master_volume: f32,
+    main_volume: f32,
     hitsound_volume: f32,
     panning: (f32, f32),
 }
@@ -13,7 +13,7 @@ pub struct Settings {
 impl Settings {
     pub fn new(data: SharedGameData) -> Self {
         Settings {
-            master_volume: data.master_volume(),
+            main_volume: data.main_volume(),
             panning: data.panning(),
             hitsound_volume: data.hitsound_volume.get(),
         }
@@ -33,14 +33,14 @@ impl Overlay for Settings {
                 .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0., 0.))
                 .show(egui_ctx, |ui| {
                     ui.label("Volume");
-                    let master_volume = ui.add(
-                        egui::Slider::new(&mut self.master_volume, 0.0..=1.0)
+                    let main_volume = ui.add(
+                        egui::Slider::new(&mut self.main_volume, 0.0..=1.0)
                             .clamp_to_range(true)
-                            .text("Master")
+                            .text("Main")
                             .show_value(false),
                     );
-                    if master_volume.changed() {
-                        data.broadcast(GameMessage::SetMasterVolume(self.master_volume));
+                    if main_volume.changed() {
+                        data.broadcast(GameMessage::SetMainVolume(self.main_volume));
                     }
 
                     let hitsound_volume = ui.add(

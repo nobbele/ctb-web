@@ -1,6 +1,6 @@
 use kira::{
-    manager::AudioManager,
-    sound::{handle::SoundHandle, Sound, SoundSettings},
+    sound::static_sound::{StaticSoundData, StaticSoundSettings},
+    track::TrackId,
 };
 use macroquad::prelude::*;
 use std::{
@@ -116,17 +116,19 @@ where
 
 impl<T, F> Unpin for WaitForBlockingFuture<T, F> {}
 
-impl Cache<SoundHandle> {
-    pub async fn get_sound(&self, audio: &mut AudioManager, path: &str) -> SoundHandle {
+impl Cache<StaticSoundData> {
+    pub async fn get_sound(&self, path: &str, track: TrackId) -> StaticSoundData {
         (*self
-            .get(path, || async {
+            .get(path, move || async move {
                 let sound_data = load_file(path).await.unwrap();
-                let sound = WaitForBlockingFuture::new(|| {
-                    Sound::from_wav_reader(Cursor::new(sound_data), SoundSettings::default())
-                        .unwrap()
+                WaitForBlockingFuture::new(move || {
+                    StaticSoundData::from_cursor(
+                        Cursor::new(sound_data),
+                        StaticSoundSettings::default().track(track),
+                    )
+                    .unwrap()
                 })
-                .await;
-                audio.add_sound(sound).unwrap()
+                .await
             })
             .await)
             .clone()
