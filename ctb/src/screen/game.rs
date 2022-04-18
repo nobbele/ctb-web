@@ -200,7 +200,6 @@ impl Game {
         let azusa = if let Some(token) = token {
             Some(Azusa::new(data.clone(), token).await)
         } else {
-            set_value("token", "SET TOKEN HERE");
             None
         };
 
