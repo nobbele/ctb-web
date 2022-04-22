@@ -38,6 +38,12 @@ impl Judgement for CatchJudgement {
 pub type CatchScoreRecorder = ScoreRecorder<CatchJudgement>;
 pub type CatchScore = Score<CatchJudgement>;
 
+#[derive(Debug, Clone)]
+pub struct CatchSyncFrame {
+    pub position: f32,
+}
+
+#[derive(Debug, Clone, Copy)]
 pub struct CatchInput {
     pub left: bool,
     pub right: bool,
@@ -87,6 +93,7 @@ impl Ruleset for CatchRuleset {
     type Input = CatchInput;
     type Object = Fruit;
     type Judgement = CatchJudgement;
+    type SyncFrame = CatchSyncFrame;
 
     fn update(&mut self, dt: f32, input: Self::Input, objects: &[Self::Object]) {
         let mut speed = if input.dash { 1000. } else { 500. };
@@ -102,6 +109,12 @@ impl Ruleset for CatchRuleset {
         // If we hit a hyperfruit, the multiplier needs to set.
         for object in objects {
             self.hyper_multiplier = object.hyper;
+        }
+    }
+
+    fn generate_sync_frame(&self) -> Self::SyncFrame {
+        CatchSyncFrame {
+            position: self.position,
         }
     }
 

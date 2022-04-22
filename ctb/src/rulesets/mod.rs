@@ -9,8 +9,11 @@ pub trait Ruleset {
     /// (Hit-)object type for this ruleset.
     type Object;
 
-    /// Judgement type for this ruleset.
+    /// Judgement type for this ruleset. An indication of how well an object was hit.
     type Judgement: Judgement;
+
+    /// Sync frames are used to synchronize replays periodically.
+    type SyncFrame;
 
     /// Run a frame of the ruleset.
     ///
@@ -18,6 +21,9 @@ pub trait Ruleset {
     ///
     /// `objects` contains fruits that were hit since the last call.
     fn update(&mut self, dt: f32, input: Self::Input, objects: &[Self::Object]);
+
+    /// Generate a sync frame at this moment for use in replays.
+    fn generate_sync_frame(&self) -> Self::SyncFrame;
 
     /// Tests if an object was hit.
     ///

@@ -19,8 +19,30 @@ use kira::tween::Tween;
 use macroquad::prelude::*;
 use num_format::{Locale, ToFormattedString};
 
+#[derive(Debug, Clone)]
+pub struct ReplaySyncFrame<F> {
+    pub time: f32,
+    pub data: F,
+}
+
+#[derive(Debug, Clone)]
+pub struct Replay<I, S> {
+    pub inputs: Vec<I>,
+    pub sync_frames: Vec<ReplaySyncFrame<S>>,
+}
+
+impl<I, S> Replay<I, S> {
+    pub fn new(predicted_frame_count: usize) -> Self {
+        Replay {
+            inputs: Vec::with_capacity(predicted_frame_count),
+            sync_frames: Vec::with_capacity(predicted_frame_count / 3),
+        }
+    }
+}
+
 pub struct Gameplay<R: Ruleset> {
     recorder: ScoreRecorder<R::Judgement>,
+    replay: Replay<R::Input, R::SyncFrame>,
     ruleset: R,
 
     time: f32,
@@ -32,7 +54,6 @@ pub struct Gameplay<R: Ruleset> {
 
     chart: Chart,
     queued_fruits: Vec<usize>,
-    //deref_delete: Vec<usize>,
     time_countdown: f32,
     fade_out: f32,
     started: bool,
@@ -61,7 +82,8 @@ impl Gameplay<CatchRuleset> {
             .await;
 
         // Time from the last fruit to the end of the music.
-        let time_to_end = sound.duration().as_secs_f32() - chart.fruits.last().unwrap().time;
+        let music_length = sound.duration().as_secs_f32();
+        let time_to_end = music_length - chart.fruits.last().unwrap().time;
 
         data.broadcast(GameMessage::update_music(sound));
         data.broadcast(GameMessage::PauseMusic);
@@ -75,13 +97,17 @@ impl Gameplay<CatchRuleset> {
         };
         next_frame().await;
 
+        // Assume 60 frames per second.
+        let aprox_frame_count = (music_length * 60.) as usize;
+
         Gameplay {
             ruleset: CatchRuleset::new(),
+
+            replay: Replay::new(aprox_frame_count),
             time: -time_countdown,
             predicted_time: -time_countdown,
             prev_time: -time_countdown,
             recorder: ScoreRecorder::new(chart.fruits.len() as u32),
-            //deref_delete: Vec::new(),
             queued_fruits: (0..chart.fruits.len()).collect(),
             chart,
             show_debug_hitbox: false,
@@ -124,7 +150,6 @@ impl Gameplay<CatchRuleset> {
 impl Screen for Gameplay<CatchRuleset> {
     async fn update(&mut self, data: SharedGameData) {
         let binds = data.state().binds;
-        //let catcher_y = self.catcher_y();
 
         if !self.started {
             self.prev_time = self.time;
@@ -182,18 +207,27 @@ impl Screen for Gameplay<CatchRuleset> {
             }
         }
 
+        let input = CatchInput {
+            left: is_key_down(binds.left),
+            right: is_key_down(binds.right),
+            dash: is_key_down(binds.dash),
+        };
         self.ruleset.update(
             get_frame_time(),
-            CatchInput {
-                left: is_key_down(binds.left),
-                right: is_key_down(binds.right),
-                dash: is_key_down(binds.dash),
-            },
+            input,
             &defer_delete
                 .iter()
                 .map(|&idx| self.chart.fruits[self.queued_fruits[idx]])
                 .collect::<Vec<_>>(),
         );
+
+        self.replay.inputs.push(input);
+        if self.replay.inputs.len() % 10 == 0 {
+            self.replay.sync_frames.push(ReplaySyncFrame {
+                time: self.time,
+                data: self.ruleset.generate_sync_frame(),
+            })
+        }
 
         for idx in defer_delete.into_iter().rev() {
             self.queued_fruits.remove(idx);
