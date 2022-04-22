@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use super::{
     game::{GameMessage, SharedGameData},
     gameplay::Gameplay,
@@ -17,13 +19,59 @@ use crate::{
 use async_trait::async_trait;
 use kira::sound::static_sound::StaticSoundData;
 use macroquad::prelude::*;
+use noisy_float::prelude::R32;
 use num_format::{Locale, ToFormattedString};
+
+/// f takes progress [0-1] as input and result as output [0-1]
+fn draw_visualization(x: f32, y: f32, width: f32, height: f32, f: impl Fn(f32) -> f32) {
+    for i in 0..(height as u32) {
+        let progress = i as f32 / height as f32;
+        let value = f(progress);
+        draw_rectangle(
+            x,
+            y + i as f32,
+            width,
+            1.,
+            Color {
+                r: value,
+                g: value,
+                b: value,
+                a: 1.0,
+            },
+        )
+    }
+}
+
+fn interpolate(max: f32, tree: &BTreeMap<R32, R32>) -> impl Fn(f32) -> f32 + '_ {
+    move |progress| {
+        let time = progress * max;
+        let pre = if let Some(v) = tree.iter().take_while(|(t, _)| t.raw() < time).last() {
+            (v.0.raw(), v.1.raw())
+        } else {
+            (0.0, 0.0)
+        };
+        let post = if let Some(v) = tree.iter().find(|(t, _)| t.raw() >= time) {
+            (v.0.raw(), v.1.raw())
+        } else {
+            (0.0, 0.0)
+        };
+        crate::math::remap(pre.0, post.0, pre.1, post.1, time)
+    }
+}
+
+pub struct ChartCalcData {
+    density: BTreeMap<R32, R32>,
+    angles: BTreeMap<R32, R32>,
+    angle_changes: BTreeMap<R32, R32>,
+}
 
 pub struct SelectScreen {
     charts: Vec<ChartInfo>,
     prev_selected_chart: usize,
     selected_chart: usize,
     selected_difficulty: usize,
+
+    chart_data: Option<ChartCalcData>,
 
     scroll_vel: f32,
 
@@ -97,6 +145,7 @@ impl SelectScreen {
             local_lb: None,
             global_lb: None,
             scroll_target: None,
+            chart_data: None,
         }
     }
 
@@ -121,6 +170,7 @@ impl Screen for SelectScreen {
             if let Some(loading_promise) = &self.loading_promise {
                 data.promises().cancel(loading_promise);
             }
+
             self.loading_promise = Some(data.promises().spawn(move || async move {
                 let sound = data_clone
                     .audio_cache
@@ -303,6 +353,58 @@ impl Screen for SelectScreen {
 
                     self.global_lb = None;
                     data.send_server(ClientPacket::RequestLeaderboard(diff_id));
+
+                    let chart_info = &self.charts[self.selected_chart];
+                    let beatmap_data = load_file(&format!(
+                        "resources/{}/{}.osu",
+                        chart_info.title, chart_info.difficulties[self.selected_difficulty].name
+                    ))
+                    .await
+                    .unwrap();
+                    let beatmap_content = std::str::from_utf8(&beatmap_data).unwrap();
+                    let beatmap = osu_parser::load_content(
+                        beatmap_content,
+                        osu_parser::BeatmapParseOptions::default(),
+                    )
+                    .unwrap();
+                    let chart = crate::chart::Chart::from_beatmap(&beatmap);
+
+                    let mut chart_data = ChartCalcData {
+                        density: BTreeMap::new(),
+                        angles: BTreeMap::new(),
+                        angle_changes: BTreeMap::new(),
+                    };
+                    for [a, b] in chart.fruits.array_windows::<2>() {
+                        assert_ne!(a.time, b.time);
+                        let time_to_hit = b.time - a.time;
+                        // https://www.desmos.com/calculator/yt3tru6suf
+                        // \frac{1}{1+e^{\frac{v}{100}\left(x-m\right)}}
+                        fn density(diff_ms: f32) -> f32 {
+                            const V: f32 = 3.0 / 100.;
+                            const M: f32 = 166.0;
+                            1. / (1. + (diff_ms * V - M * V).exp())
+                        }
+
+                        let angle = a.angle_to(b, chart.fall_time).to_degrees();
+
+                        chart_data
+                            .density
+                            .insert(R32::new(b.time), R32::new(density(time_to_hit * 1000.)));
+                        chart_data
+                            .angles
+                            .insert(R32::new(b.time), R32::new(angle.abs() / 90.));
+                    }
+                    for [a, b, c] in chart.fruits.array_windows::<3>() {
+                        let angle_a = a.angle_to(b, chart.fall_time).to_degrees();
+                        let angle_b = b.angle_to(c, chart.fall_time).to_degrees();
+
+                        let angle_change = angle_a.max(angle_b) - angle_a.min(angle_b);
+
+                        chart_data
+                            .angle_changes
+                            .insert(R32::new(b.time), R32::new(angle_change / 180.));
+                    }
+                    self.chart_data = Some(chart_data);
                 }
             }
             if message.target == self.start.id {
@@ -339,6 +441,39 @@ impl Screen for SelectScreen {
         }
         if let Some(global) = &self.global_lb {
             global.draw(data);
+        }
+
+        if let Some(chart_data) = &self.chart_data {
+            let max_density = chart_data.density.iter().last().unwrap();
+            let max_angle = chart_data.angles.iter().last().unwrap();
+            let max_angle_change = chart_data.angles.iter().last().unwrap();
+
+            draw_text("Density", 0., screen_height() - 106., 16., WHITE);
+            draw_visualization(
+                0.,
+                screen_height() - 100.,
+                50.,
+                100.,
+                interpolate(max_density.0.raw(), &chart_data.density),
+            );
+
+            draw_text("Angles", 55., screen_height() - 106., 16., WHITE);
+            draw_visualization(
+                55.,
+                screen_height() - 100.,
+                50.,
+                100.,
+                interpolate(max_angle.0.raw(), &chart_data.angles),
+            );
+
+            draw_text("Angles Changes", 110., screen_height() - 106., 16., WHITE);
+            draw_visualization(
+                110.,
+                screen_height() - 100.,
+                50.,
+                100.,
+                interpolate(max_angle_change.0.raw(), &chart_data.angle_changes),
+            );
         }
 
         if self.loading_promise.is_some() {

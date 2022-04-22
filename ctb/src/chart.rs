@@ -17,6 +17,19 @@ impl Fruit {
             small,
         }
     }
+
+    pub fn angle_to(&self, other: &Fruit, fall_time: f32) -> f32 {
+        let time_to_hit = other.time.max(self.time) - other.time.min(self.time);
+        const H: f32 = 768.;
+        let jump_height = time_to_hit * H / fall_time;
+        let jump_width = if other.position > self.position {
+            other.position - self.position
+        } else {
+            self.position - other.position
+        };
+
+        (jump_height / jump_width).atan()
+    }
 }
 
 pub struct Chart {
