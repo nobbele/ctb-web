@@ -112,7 +112,7 @@ impl Gameplay<CatchRuleset> {
         next_frame().await;
 
         // Assume 60 frames per second.
-        let _approx_frame_count = (music_length * 60.) as usize;
+        let approx_frame_count = (music_length * 60.) as usize;
 
         let replay = Replay::new(approx_frame_count);
 
