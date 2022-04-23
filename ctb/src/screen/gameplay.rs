@@ -7,7 +7,9 @@ use super::{
 use crate::{
     azusa::ClientPacket,
     chart::Chart,
-    draw_text_centered, math,
+    draw_text_centered,
+    frozen::Frozen,
+    math,
     rulesets::{
         catch::{catcher_speed, CatchInput, CatchRuleset},
         Ruleset,
@@ -66,7 +68,7 @@ pub struct Gameplay<R: Ruleset> {
     show_debug_hitbox: bool,
     use_predicted_time: bool,
 
-    chart: Chart,
+    chart: Frozen<Chart>,
     queued_fruits: Vec<usize>,
     time_countdown: f32,
     fade_out: f32,
@@ -127,7 +129,7 @@ impl Gameplay<CatchRuleset> {
             prev_time: -time_countdown,
             recorder: ScoreRecorder::new(chart.fruits.len() as u32),
             queued_fruits: (0..chart.fruits.len()).collect(),
-            chart,
+            chart: Frozen(chart),
             show_debug_hitbox: false,
             use_predicted_time: true,
             time_countdown,

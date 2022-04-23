@@ -21,6 +21,7 @@ pub mod score;
 pub mod screen;
 pub mod ui;
 pub mod web_socket;
+pub mod frozen;
 
 pub struct Delay {
     target: f32,
