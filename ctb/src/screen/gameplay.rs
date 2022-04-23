@@ -24,6 +24,7 @@ use num_format::{Locale, ToFormattedString};
 pub struct ReplaySyncFrame<F> {
     pub time: f32,
     pub data: F,
+    pub input_index: u32,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -43,9 +44,19 @@ impl<I, S> Replay<I, S> {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ReplayType {
+    Record,
+    Playback {
+        input_index: usize,
+        sync_frame_index: usize,
+    },
+}
+
 pub struct Gameplay<R: Ruleset> {
     recorder: ScoreRecorder<R::Judgement>,
     replay: Replay<R::Input, R::SyncFrame>,
+    replay_type: ReplayType,
     ruleset: R,
 
     time: f32,
@@ -101,12 +112,16 @@ impl Gameplay<CatchRuleset> {
         next_frame().await;
 
         // Assume 60 frames per second.
-        let aprox_frame_count = (music_length * 60.) as usize;
+        let _approx_frame_count = (music_length * 60.) as usize;
+
+        let replay = Replay::new(approx_frame_count);
 
         Gameplay {
             ruleset: CatchRuleset::new(),
 
-            replay: Replay::new(aprox_frame_count),
+            replay,
+            replay_type: ReplayType::Record,
+
             time: -time_countdown,
             predicted_time: -time_countdown,
             prev_time: -time_countdown,
@@ -210,11 +225,24 @@ impl Screen for Gameplay<CatchRuleset> {
             }
         }
 
-        let input = CatchInput {
-            left: is_key_down(binds.left),
-            right: is_key_down(binds.right),
-            dash: is_key_down(binds.dash),
+        let input = if let ReplayType::Playback { input_index, .. } = self.replay_type {
+            self.replay
+                .inputs
+                .get(input_index)
+                .copied()
+                .unwrap_or(CatchInput {
+                    left: false,
+                    right: false,
+                    dash: false,
+                })
+        } else {
+            CatchInput {
+                left: is_key_down(binds.left),
+                right: is_key_down(binds.right),
+                dash: is_key_down(binds.dash),
+            }
         };
+
         self.ruleset.update(
             get_frame_time(),
             input,
@@ -224,12 +252,30 @@ impl Screen for Gameplay<CatchRuleset> {
                 .collect::<Vec<_>>(),
         );
 
-        self.replay.inputs.push(input);
-        if self.replay.inputs.len() % 10 == 0 {
-            self.replay.sync_frames.push(ReplaySyncFrame {
-                time: self.time,
-                data: self.ruleset.generate_sync_frame(),
-            })
+        match &mut self.replay_type {
+            ReplayType::Record => {
+                if self.replay.inputs.len() % 10 == 0 {
+                    self.replay.sync_frames.push(ReplaySyncFrame {
+                        time: self.time,
+                        data: self.ruleset.generate_sync_frame(),
+                        input_index: self.replay.inputs.len() as u32,
+                    })
+                }
+                self.replay.inputs.push(input);
+            }
+            ReplayType::Playback {
+                input_index,
+                sync_frame_index,
+            } => {
+                *input_index += 1;
+                if let Some(next_sync_frame) = self.replay.sync_frames.get(*sync_frame_index) {
+                    if self.time >= next_sync_frame.time {
+                        *input_index = next_sync_frame.input_index as usize;
+                        self.ruleset.handle_sync_frame(&next_sync_frame.data);
+                        *sync_frame_index += 1;
+                    }
+                }
+            }
         }
 
         for idx in defer_delete.into_iter().rev() {

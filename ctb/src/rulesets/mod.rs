@@ -25,6 +25,9 @@ pub trait Ruleset {
     /// Generate a sync frame at this moment for use in replays.
     fn generate_sync_frame(&self) -> Self::SyncFrame;
 
+    /// Sync frame handler, used to synchronize the current ruelset state with the replay.
+    fn handle_sync_frame(&mut self, frame: &Self::SyncFrame);
+
     /// Tests if an object was hit.
     ///
     /// `dt` in this case refers to the audio delta-time.

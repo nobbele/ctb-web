@@ -118,6 +118,10 @@ impl Ruleset for CatchRuleset {
         }
     }
 
+    fn handle_sync_frame(&mut self, frame: &Self::SyncFrame) {
+        self.position = frame.position;
+    }
+
     fn test_hitobject(
         &self,
         dt: f32,
