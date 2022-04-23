@@ -4,7 +4,7 @@ pub mod catch;
 
 pub trait Ruleset {
     /// Input type for this ruleset.
-    type Input;
+    type Input: serde::Serialize + for<'a> serde::Deserialize<'a>;
 
     /// (Hit-)object type for this ruleset.
     type Object;
@@ -13,7 +13,7 @@ pub trait Ruleset {
     type Judgement: Judgement;
 
     /// Sync frames are used to synchronize replays periodically.
-    type SyncFrame;
+    type SyncFrame: serde::Serialize + for<'a> serde::Deserialize<'a>;
 
     /// Run a frame of the ruleset.
     ///

@@ -3,3 +3,4 @@
 /resources/*
 !/resources/.gitkeep
 /data
+*.crp

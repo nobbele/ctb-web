@@ -80,12 +80,22 @@ impl<'a> LogEndpointBuilder<'a> {
             rx,
             fmt: self.fmt.unwrap_or_else(|| {
                 Box::new(|s, endpoint| {
+                    let now = SystemTime::now();
+                    let date_time = time::OffsetDateTime::from_unix_timestamp(
+                        now.duration_since(SystemTime::UNIX_EPOCH)
+                            .unwrap()
+                            .as_secs() as i64,
+                    )
+                    .unwrap();
+
                     format!(
                         "/{}/ [{:?}] {}",
-                        SystemTime::now()
-                            .duration_since(SystemTime::UNIX_EPOCH)
-                            .unwrap()
-                            .as_secs(),
+                        date_time
+                            .format(
+                                &time::format_description::parse("[hour]:[minute]:[second]")
+                                    .unwrap()
+                            )
+                            .unwrap(),
                         endpoint.ty,
                         s
                     )

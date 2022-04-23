@@ -15,18 +15,20 @@ use crate::{
     score::{Judgement, ScoreRecorder},
 };
 use async_trait::async_trait;
+use instant::SystemTime;
 use kira::tween::Tween;
 use macroquad::prelude::*;
 use num_format::{Locale, ToFormattedString};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ReplaySyncFrame<F> {
     pub time: f32,
     pub data: F,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Replay<I, S> {
+    pub start: SystemTime,
     pub inputs: Vec<I>,
     pub sync_frames: Vec<ReplaySyncFrame<S>>,
 }
@@ -34,6 +36,7 @@ pub struct Replay<I, S> {
 impl<I, S> Replay<I, S> {
     pub fn new(predicted_frame_count: usize) -> Self {
         Replay {
+            start: SystemTime::now(),
             inputs: Vec::with_capacity(predicted_frame_count),
             sync_frames: Vec::with_capacity(predicted_frame_count / 3),
         }
@@ -243,12 +246,19 @@ impl Screen for Gameplay<CatchRuleset> {
                     data.state_mut().leaderboard.submit_score(&score).await;
                 }
 
+                data.send_server(ClientPacket::Submit(score.clone()));
+
                 let map_title = data.state().chart.title.clone();
                 let diff_title = data.state().difficulty().name.clone();
-                data.send_server(ClientPacket::Submit(score.clone()));
-                data.broadcast(GameMessage::change_screen(ResultScreen::new(
-                    score, map_title, diff_title,
-                )));
+
+                data.broadcast(GameMessage::change_screen(
+                    ResultScreen::<CatchRuleset>::new(
+                        score,
+                        self.replay.clone(),
+                        map_title,
+                        diff_title,
+                    ),
+                ));
 
                 self.ended = true;
             }

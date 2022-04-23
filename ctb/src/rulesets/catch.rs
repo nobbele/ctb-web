@@ -38,12 +38,12 @@ impl Judgement for CatchJudgement {
 pub type CatchScoreRecorder = ScoreRecorder<CatchJudgement>;
 pub type CatchScore = Score<CatchJudgement>;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct CatchSyncFrame {
     pub position: f32,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct CatchInput {
     pub left: bool,
     pub right: bool,

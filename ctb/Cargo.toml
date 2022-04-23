@@ -22,6 +22,8 @@ thiserror = "1.0.30"
 uuid = { version = "0.8.2", default-features = false, features = ["serde"] }
 egui-macroquad = "0.9.0"
 noisy_float = "0.2.0"
+rmp-serde = "1.1.0"
+time = { version = "0.3.9", features = ["formatting"] }
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 gluesql = { version = "0.10.2", default-features = false, features = ["sled-storage"] }

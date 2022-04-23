@@ -349,7 +349,7 @@ dependencies = [
  "num-integer",
  "num-traits",
  "serde",
- "time",
+ "time 0.1.43",
  "wasm-bindgen",
  "winapi 0.3.9",
 ]
@@ -585,11 +585,13 @@ dependencies = [
  "parking_lot 0.12.0",
  "qws",
  "ringbuffer",
+ "rmp-serde",
  "sapp-jsutils",
  "serde",
  "serde_json",
  "slotmap",
  "thiserror",
+ "time 0.3.9",
  "uuid",
  "wasm-bindgen",
  "web-sys",
@@ -1968,6 +1970,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "num_threads"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aba1801fb138d8e85e11d0fc70baf4fe1cdfffda7c6cd34a854905df588e5ed0"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "objc"
 version = "0.2.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2475,6 +2486,28 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72dfeba9c94fdc308dcfe165efa6855c698f317484b736605ff859c5fa81d992"
 dependencies = [
  "array-init",
+]
+
+[[package]]
+name = "rmp"
+version = "0.8.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "44519172358fd6d58656c86ab8e7fbc9e1490c3e8f14d35ed78ca0dd07403c9f"
+dependencies = [
+ "byteorder",
+ "num-traits",
+ "paste",
+]
+
+[[package]]
+name = "rmp-serde"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "25786b0d276110195fa3d6f3f31299900cf71dfbd6c28450f3f58a0e7f7a347e"
+dependencies = [
+ "byteorder",
+ "rmp",
+ "serde",
 ]
 
 [[package]]
@@ -3089,6 +3122,17 @@ checksum = "ca8a50ef2360fbd1eeb0ecd46795a87a19024eb4b53c5dc916ca1fd95fe62438"
 dependencies = [
  "libc",
  "winapi 0.3.9",
+]
+
+[[package]]
+name = "time"
+version = "0.3.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c2702e08a7a860f005826c6815dcac101b19b5eb330c27fe4a5928fec1d20ddd"
+dependencies = [
+ "itoa 1.0.1",
+ "libc",
+ "num_threads",
 ]
 
 [[package]]
