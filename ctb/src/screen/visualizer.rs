@@ -41,11 +41,11 @@ impl Screen for Visualizer {
 
         let x = screen_width() / 3. - screen_width() / 20.;
         draw_text("Real Time", x, receptor_y - 10., 32.0, WHITE);
-        draw_with_time(x, data.time(), receptor_y);
+        draw_with_time(x, data.time_with_offset(), receptor_y);
 
         let x = screen_width() * 2. / 3. - screen_width() / 20.;
         draw_text("Predicted Time", x, receptor_y - 10., 32.0, WHITE);
-        draw_with_time(x, data.predicted_time(), receptor_y);
+        draw_with_time(x, data.predicted_time_with_offset(), receptor_y);
     }
 }
 

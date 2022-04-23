@@ -149,6 +149,7 @@ pub struct GameData {
     // Only used to read in settings, otherwise read-only.
     hitsound_volume: Cell<f32>,
     panning: Cell<(f32, f32)>,
+    offset: Cell<f32>,
 
     pub general: LogEndpoint,
     pub network: LogEndpoint,
@@ -180,12 +181,14 @@ impl GameData {
         self.packet_tx.send(msg).unwrap();
     }
 
-    pub fn time(&self) -> f32 {
-        self.time.get()
+    /// Includes offset.
+    pub fn time_with_offset(&self) -> f32 {
+        self.time.get() + self.offset.get()
     }
 
-    pub fn predicted_time(&self) -> f32 {
-        self.predicted_time.get()
+    /// Includes offset.
+    pub fn predicted_time_with_offset(&self) -> f32 {
+        self.predicted_time.get() + self.offset.get()
     }
 
     pub fn main_volume(&self) -> f32 {

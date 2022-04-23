@@ -8,6 +8,7 @@ pub struct Settings {
     main_volume: f32,
     hitsound_volume: f32,
     panning: (f32, f32),
+    offset_ms: i32,
 }
 
 impl Settings {
@@ -16,6 +17,7 @@ impl Settings {
             main_volume: data.main_volume(),
             panning: data.panning(),
             hitsound_volume: data.hitsound_volume.get(),
+            offset_ms: (data.offset.get() * 1000.) as i32,
         }
     }
 }
@@ -82,6 +84,17 @@ impl Overlay for Settings {
                             data.set_panning(self.panning.0, self.panning.1);
                         }
                     });
+
+                    ui.label("Offset");
+                    let offset = ui.add(
+                        egui::Slider::new(&mut self.offset_ms, -100..=100)
+                            .show_value(true)
+                            .suffix(" ms")
+                            .show_value(true),
+                    );
+                    if offset.changed() {
+                        data.broadcast(GameMessage::SetOffset(self.offset_ms as f32 / 1000.));
+                    }
                 });
         });
     }

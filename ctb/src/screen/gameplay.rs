@@ -183,8 +183,8 @@ impl Screen for Gameplay<CatchRuleset> {
             }
         } else {
             self.prev_time = self.time;
-            self.time = data.time();
-            self.predicted_time = data.predicted_time();
+            self.time = data.time_with_offset();
+            self.predicted_time = data.predicted_time_with_offset();
         }
 
         let mut defer_delete = Vec::new();

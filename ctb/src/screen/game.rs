@@ -42,6 +42,7 @@ pub enum GameMessage {
     ResumeMusic,
     SetMainVolume(f32),
     SetHitsoundVolume(f32),
+    SetOffset(f32),
 }
 
 impl GameMessage {
@@ -126,6 +127,9 @@ impl Game {
         let main_volume = get_value("main_volume").unwrap_or(0.25);
         let hitsound_volume = get_value("hitsound_volume").unwrap_or(1.0);
 
+        // Linux usually needs a +30ms offset for compatibility with windows. (I think..)
+        let offset = get_value("offset").unwrap_or(if cfg!(unix) { 0.03 } else { 0.0 });
+
         let (packet_tx, packet_rx) = flume::unbounded();
         let (game_tx, game_rx) = flume::unbounded();
 
@@ -190,6 +194,7 @@ impl Game {
             main_volume: Cell::new(main_volume),
             hitsound_volume: Cell::new(hitsound_volume),
             locked_input: Cell::new(false),
+            offset: Cell::new(offset),
             promises: RefCell::new(PromiseExecutor::new()),
             packet_tx,
             game_tx,
@@ -252,9 +257,9 @@ impl Game {
 
                 self.data
                     .predicted_time
-                    .set(self.data.predicted_time() + get_frame_time());
+                    .set(self.data.predicted_time.get() + get_frame_time());
             } else {
-                let predicted_time = self.data.predicted_time();
+                let predicted_time = self.data.predicted_time.get();
                 if predicted_time != time {
                     log_to!(
                         self.data.audio_performance,
@@ -343,6 +348,10 @@ impl Game {
                         .set_volume(volume as f64, Tween::default())
                         .unwrap();
                     set_value("hitsound_volume", volume);
+                }
+                GameMessage::SetOffset(offset) => {
+                    self.data.offset.set(offset);
+                    set_value("offset", offset);
                 }
             }
         }
