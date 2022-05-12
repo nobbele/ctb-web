@@ -48,11 +48,17 @@ impl<T> Cache<T> {
             cache: RefCell::new(HashMap::new()),
         }
     }
-    pub async fn get<F: Future<Output = T>>(&self, key: &str, get: impl FnOnce() -> F) -> Arc<T> {
-        match self.cache.borrow_mut().entry(key.to_owned()) {
+    pub async fn get<F: Future<Output = Result<T, ()>>>(
+        &self,
+        key: &str,
+        get: impl FnOnce() -> F,
+    ) -> Result<Arc<T>, ()> {
+        Ok(match self.cache.borrow_mut().entry(key.to_owned()) {
             std::collections::hash_map::Entry::Occupied(o) => o.get().clone(),
-            std::collections::hash_map::Entry::Vacant(e) => e.insert(Arc::new(get().await)).clone(),
-        }
+            std::collections::hash_map::Entry::Vacant(e) => {
+                e.insert(Arc::new(get().await?)).clone()
+            }
+        })
     }
 }
 
@@ -117,28 +123,29 @@ where
 impl<T, F> Unpin for WaitForBlockingFuture<T, F> {}
 
 impl Cache<StaticSoundData> {
-    pub async fn get_sound(&self, path: &str, track: TrackId) -> StaticSoundData {
-        (*self
+    pub async fn get_sound(&self, path: &str, track: TrackId) -> Result<StaticSoundData, ()> {
+        let res = self
             .get(path, move || async move {
-                let sound_data = load_file(path).await.unwrap();
+                let sound_data = load_file(path).await.map_err(|_| ())?;
                 WaitForBlockingFuture::new(move || {
-                    StaticSoundData::from_cursor(
+                    Ok(StaticSoundData::from_cursor(
                         Cursor::new(sound_data),
                         StaticSoundSettings::default().track(track),
                     )
-                    .unwrap()
+                    .unwrap())
                 })
                 .await
             })
-            .await)
-            .clone()
+            .await;
+        Ok((*res.map_err(|_| ())?).clone())
     }
 }
 
 impl Cache<Texture2D> {
     pub async fn get_texture(&self, path: &str) -> Texture2D {
-        *self
-            .get(path, || async { load_texture(path).await.unwrap() })
-            .await
+        let res = self
+            .get(path, || async { Ok(load_texture(path).await.unwrap()) })
+            .await;
+        *res.unwrap()
     }
 }

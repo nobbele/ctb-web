@@ -6,7 +6,7 @@ use super::{
 };
 use crate::{
     azusa::ClientPacket,
-    chart::Chart,
+    chart::{Chart, EventData, HitSoundKind},
     draw_text_centered,
     frozen::Frozen,
     math,
@@ -56,6 +56,7 @@ pub enum ReplayType {
 }
 
 pub struct Gameplay<R: Ruleset> {
+    chart_name: String,
     recorder: ScoreRecorder<R::Judgement>,
     replay: Replay<R::Input, R::SyncFrame>,
     replay_type: ReplayType,
@@ -76,6 +77,12 @@ pub struct Gameplay<R: Ruleset> {
     ended: bool,
 
     paused: bool,
+
+    event_idx: usize,
+    hitsound: HitSoundKind,
+    bpm: f32,
+    fall_multiplier: f32,
+    volume: f32,
 }
 
 impl Gameplay<CatchRuleset> {
@@ -95,7 +102,8 @@ impl Gameplay<CatchRuleset> {
                 &format!("resources/{}/audio.wav", chart_name),
                 data.main_track.id(),
             )
-            .await;
+            .await
+            .unwrap();
 
         // Time from the last fruit to the end of the music.
         let music_length = sound.duration().as_secs_f32();
@@ -119,6 +127,7 @@ impl Gameplay<CatchRuleset> {
         let replay = Replay::new(approx_frame_count);
 
         Gameplay {
+            chart_name: chart_name.to_owned(),
             ruleset: CatchRuleset::new(),
 
             replay,
@@ -137,6 +146,12 @@ impl Gameplay<CatchRuleset> {
             fade_out: time_to_end.max(1.).min(3.),
             ended: false,
             paused: false,
+
+            event_idx: 0,
+            hitsound: HitSoundKind::Normal,
+            bpm: 180.,
+            fall_multiplier: 1.,
+            volume: 1.,
         }
     }
 
@@ -187,6 +202,22 @@ impl Screen for Gameplay<CatchRuleset> {
             self.predicted_time = data.predicted_time_with_offset();
         }
 
+        for event in self.chart.events[self.event_idx..]
+            .iter()
+            .filter(|event| self.time >= event.time)
+        {
+            println!("New Event! {:?}", event.data);
+            match &event.data {
+                EventData::Timing { bpm } => self.bpm = *bpm,
+                EventData::DiffMod { fall_multiplier } => self.fall_multiplier = *fall_multiplier,
+                EventData::Hitsound { kind, volume } => {
+                    self.hitsound = kind.clone();
+                    self.volume = *volume;
+                }
+            }
+            self.event_idx += 1;
+        }
+
         let mut defer_delete = Vec::new();
 
         let audio_dt = self.time - self.prev_time;
@@ -205,14 +236,50 @@ impl Screen for Gameplay<CatchRuleset> {
                             data.panning().1,
                             self.ruleset.position,
                         );
-                        let mut hitsound = data
-                            .audio
-                            .borrow_mut()
-                            .play(data.hit_normal.clone())
-                            .unwrap();
-                        hitsound
-                            .set_panning(panning as f64, Tween::default())
-                            .unwrap();
+
+                        let hs_type = match &self.hitsound {
+                            crate::chart::HitSoundKind::Normal => "Normal",
+                            crate::chart::HitSoundKind::Soft => "Soft",
+                            crate::chart::HitSoundKind::Drum => "Drum",
+                            crate::chart::HitSoundKind::Custom(s) => s,
+                        };
+                        let base_hs_path =
+                            format!("resources/{}/HitSounds/{}", self.chart_name, hs_type);
+
+                        let play_sound = |name: &'static str| {
+                            let data = data.clone();
+                            let base_hs_path = &base_hs_path;
+                            let volume = self.volume;
+                            async move {
+                                let hs_data = data
+                                    .audio_cache
+                                    .get_sound(
+                                        &format!("{}/{}.wav", base_hs_path, name),
+                                        data.hitsound_track.id(),
+                                    )
+                                    .await
+                                    .unwrap_or(data.hit_normal.clone());
+
+                                let mut hitsound = data.audio.borrow_mut().play(hs_data).unwrap();
+                                hitsound
+                                    .set_panning(panning as f64, Tween::default())
+                                    .unwrap();
+                                hitsound
+                                    .set_volume(volume as f64, Tween::default())
+                                    .unwrap();
+                            }
+                        };
+
+                        play_sound("Hit").await;
+                        if fruit.additions.whistle {
+                            play_sound("Whistle").await;
+                        }
+                        if fruit.additions.finish {
+                            play_sound("Finish").await;
+                        }
+                        if fruit.additions.clap {
+                            play_sound("Clap").await;
+                        }
                     }
                 } else {
                     if self.recorder.combo >= 8 {

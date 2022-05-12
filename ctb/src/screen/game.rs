@@ -149,17 +149,20 @@ impl Game {
 
         let sound = audio_cache
             .get_sound("resources/Kizuato/audio.wav", main_track.id())
-            .await;
+            .await
+            .unwrap();
 
         let mut instance = audio.play(sound).unwrap();
         instance.set_volume(0., Tween::default()).unwrap();
 
         let combo_break = audio_cache
             .get_sound("resources/combobreak.wav", hitsound_track.id())
-            .await;
+            .await
+            .unwrap();
         let hit_normal = audio_cache
             .get_sound("resources/hitnormal.wav", hitsound_track.id())
-            .await;
+            .await
+            .unwrap();
 
         let data = Rc::new(GameData {
             audio_cache,

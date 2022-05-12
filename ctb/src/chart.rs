@@ -1,4 +1,23 @@
+use osu_types::SpecificHitObject;
+
 use crate::rulesets::catch::catcher_speed;
+
+#[derive(Debug, Copy, Clone)]
+pub struct Additions {
+    pub whistle: bool,
+    pub finish: bool,
+    pub clap: bool,
+}
+
+impl Additions {
+    fn from_hit_sound_bits(bits: u8) -> Self {
+        Additions {
+            whistle: bits & (1 << 1) > 0,
+            finish: bits & (1 << 2) > 0,
+            clap: bits & (1 << 3) > 0,
+        }
+    }
+}
 
 #[derive(Debug, Copy, Clone)]
 pub struct Fruit {
@@ -6,6 +25,7 @@ pub struct Fruit {
     pub time: f32,
     pub hyper: Option<f32>,
     pub small: bool,
+    pub additions: Additions,
 }
 
 impl Fruit {
@@ -15,6 +35,10 @@ impl Fruit {
             time: hitobject.time as f32 / 1000.,
             hyper: None,
             small,
+            additions: Additions::from_hit_sound_bits(match &hitobject.specific {
+                SpecificHitObject::Slider { edge_sounds, .. } => *edge_sounds.first().unwrap(),
+                _ => hitobject.hit_sound,
+            }),
         }
     }
 
@@ -22,18 +46,36 @@ impl Fruit {
         let time_to_hit = other.time.max(self.time) - other.time.min(self.time);
         const H: f32 = 768.;
         let jump_height = time_to_hit * H / fall_time;
-        let jump_width = if other.position > self.position {
-            other.position - self.position
-        } else {
-            self.position - other.position
-        };
+        let jump_width = (other.position - self.position).abs();
 
         (jump_height / jump_width).atan()
     }
 }
 
+#[derive(Debug, Clone)]
+pub enum HitSoundKind {
+    Normal,
+    Soft,
+    Drum,
+    Custom(String),
+}
+
+#[derive(Debug)]
+pub enum EventData {
+    Timing { bpm: f32 },
+    Hitsound { kind: HitSoundKind, volume: f32 },
+    DiffMod { fall_multiplier: f32 },
+}
+
+#[derive(Debug)]
+pub struct Event {
+    pub time: f32,
+    pub data: EventData,
+}
+
 pub struct Chart {
     pub fruits: Vec<Fruit>,
+    pub events: Vec<Event>,
     pub fall_time: f32,
     pub fruit_radius: f32,
     pub catcher_width: f32,
@@ -80,8 +122,8 @@ impl Chart {
             if let osu_types::SpecificHitObject::Slider {
                 curve_type,
                 curve_points,
-                slides: _,
                 length,
+                ..
             } = &hitobject.specific
             {
                 let opx_per_sec = opx_per_secs
@@ -124,6 +166,7 @@ impl Chart {
                         time: fruit.time + sec,
                         hyper: None,
                         small: true,
+                        ..fruit
                     })
                 }
                 fruits.push(Fruit {
@@ -131,6 +174,7 @@ impl Chart {
                     time: fruit.time + slide_length_secs,
                     hyper: None,
                     small: false,
+                    ..fruit
                 })
             }
         }
@@ -148,8 +192,59 @@ impl Chart {
             };
         }
 
+        let mut sections = Vec::new();
+
+        let mut current_bps = 180. / 60.;
+        let mut current_sample_set = osu_types::SampleSet::Normal;
+
+        for tp in &beatmap.timing_points {
+            if tp.uninherited {
+                let beats_per_second = 1000.0 / tp.beat_length;
+                if beats_per_second != current_bps {
+                    current_bps = beats_per_second;
+                    sections.push(Event {
+                        time: tp.time as f32 / 1000.,
+                        data: EventData::Timing {
+                            bpm: beats_per_second * 60.,
+                        },
+                    });
+                }
+            }
+
+            let sample_set = tp.sample_set.unwrap_or(osu_types::SampleSet::Normal);
+            if current_sample_set != sample_set {
+                current_sample_set = sample_set;
+
+                let hs_kind = match sample_set {
+                    osu_types::SampleSet::Normal => HitSoundKind::Normal,
+                    osu_types::SampleSet::Soft => HitSoundKind::Soft,
+                    osu_types::SampleSet::Drum => HitSoundKind::Drum,
+                };
+                sections.push(Event {
+                    time: tp.time as f32 / 1000.,
+                    data: EventData::Hitsound {
+                        kind: if tp.sample_index >= 2 {
+                            HitSoundKind::Custom(format!(
+                                "{}{}",
+                                match sample_set {
+                                    osu_types::SampleSet::Normal => "normal",
+                                    osu_types::SampleSet::Soft => "soft",
+                                    osu_types::SampleSet::Drum => "drum",
+                                },
+                                tp.sample_index
+                            ))
+                        } else {
+                            hs_kind
+                        },
+                        volume: tp.volume as f32 / 100.,
+                    },
+                })
+            }
+        }
+
         Chart {
             fruits,
+            events: sections,
             fall_time: osu_utils::ar_to_ms(beatmap.info.difficulty.ar) / 1000.,
             fruit_radius: osu_utils::cs_to_px(beatmap.info.difficulty.cs),
             catcher_width: {

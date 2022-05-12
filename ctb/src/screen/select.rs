@@ -178,7 +178,8 @@ impl Screen for SelectScreen {
                         &format!("resources/{}/audio.wav", data_clone.state().chart.title),
                         data_clone.main_track.id(),
                     )
-                    .await;
+                    .await
+                    .unwrap();
                 let background = data_clone
                     .image_cache
                     .get_texture(&format!(
