@@ -1330,6 +1330,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "importer"
+version = "0.1.0"
+dependencies = [
+ "osu-parser",
+ "osu-types",
+]
+
+[[package]]
 name = "indexmap"
 version = "1.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -2,7 +2,8 @@
 members = [
     "azusa",
     "website",
-    "ctb"
+    "ctb",
+    "importer"
 ]
 
 [profile.dev]

@@ -101,6 +101,24 @@ pub fn get_charts() -> Vec<ChartInfo> {
                 },
             ],
         },
+        ChartInfo {
+            id: 4,
+            title: "Dear You".to_string(),
+            difficulties: vec![
+                DifficultyInfo {
+                    id: 11,
+                    name: "SYAHME's Salad".to_string(),
+                },
+                DifficultyInfo {
+                    id: 12,
+                    name: "Murumuru's Platter".to_string(),
+                },
+                DifficultyInfo {
+                    id: 13,
+                    name: "Overdose".to_string(),
+                },
+            ],
+        },
     ]
 }
 
