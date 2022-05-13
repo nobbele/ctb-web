@@ -24,7 +24,7 @@ impl Overlay for Chat {
         }
 
         if is_key_pressed(KeyCode::Enter) {
-            let message = std::mem::replace(&mut self.text_buffer, String::new());
+            let message = std::mem::take(&mut self.text_buffer);
             data.send_server(ClientPacket::Chat(message));
         }
     }

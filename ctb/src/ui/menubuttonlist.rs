@@ -2,9 +2,8 @@ use super::{
     menubutton::{MenuButton, MenuButtonMessage, Popout},
     Message, MessageData, UiElement,
 };
-use crate::screen::{game::SharedGameData};
+use crate::screen::game::SharedGameData;
 use macroquad::prelude::*;
-
 
 pub enum MenuButtonListMessage {
     Click(usize),
@@ -47,7 +46,7 @@ impl MenuButtonList {
                                 .map(|(idx, diff)| {
                                     MenuButton::new(
                                         format!("{}-{}", id, idx),
-                                        vec![diff.clone()],
+                                        vec![diff],
                                         popout,
                                         Rect::default(),
                                         tx.clone(),

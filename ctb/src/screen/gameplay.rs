@@ -7,6 +7,7 @@ use super::{
 use crate::{
     azusa::ClientPacket,
     chart::{Chart, EventData, HitSoundKind},
+    convert::ConvertFrom,
     draw_text_centered,
     frozen::Frozen,
     math,
@@ -94,7 +95,7 @@ impl Gameplay<CatchRuleset> {
         let beatmap =
             osu_parser::load_content(beatmap_content, osu_parser::BeatmapParseOptions::default())
                 .unwrap();
-        let chart = Chart::from_beatmap(&beatmap);
+        let chart = Chart::convert_from(&beatmap);
 
         let sound = data
             .audio_cache
@@ -281,13 +282,11 @@ impl Screen for Gameplay<CatchRuleset> {
                             play_sound("Clap").await;
                         }
                     }
-                } else {
-                    if self.recorder.combo >= 8 {
-                        data.audio
-                            .borrow_mut()
-                            .play(data.combo_break.clone())
-                            .unwrap();
-                    }
+                } else if self.recorder.combo >= 8 {
+                    data.audio
+                        .borrow_mut()
+                        .play(data.combo_break.clone())
+                        .unwrap();
                 }
                 defer_delete.push(idx);
                 self.recorder.register_judgement(judgement);

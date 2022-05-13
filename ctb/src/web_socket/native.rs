@@ -1,9 +1,4 @@
-
-
-use crate::{
-    log_to,
-    screen::{game::SharedGameData},
-};
+use crate::{log_to, screen::game::SharedGameData};
 
 use super::{ConnectionStatus, WebSocketInterface};
 
@@ -93,18 +88,15 @@ impl WebSocketInterface for WebSocket {
     }
 
     fn poll(&mut self) -> Result<Vec<Vec<u8>>, String> {
-        match self.status() {
-            ConnectionStatus::Connected => {
-                for msg in self.send_queue.1.drain() {
-                    log_to!(
-                        self.data.network,
-                        "Sending message (length: {}) to socket.",
-                        msg.len()
-                    );
-                    self.sender.as_ref().unwrap().send(msg).unwrap();
-                }
+        if self.status() == ConnectionStatus::Connected {
+            for msg in self.send_queue.1.drain() {
+                log_to!(
+                    self.data.network,
+                    "Sending message (length: {}) to socket.",
+                    msg.len()
+                );
+                self.sender.as_ref().unwrap().send(msg).unwrap();
             }
-            _ => (),
         }
 
         let mut v = Vec::new();

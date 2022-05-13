@@ -14,10 +14,12 @@ pub enum Target {
     User(String),
 }
 
+type ClientKey = Arc<RwLock<(Wss, Client)>>;
+
 pub struct App {
     tx: flume::Sender<(Target, ServerPacket)>,
     rx: flume::Receiver<(Target, ServerPacket)>,
-    clients: RwLock<HashMap<String, Arc<RwLock<(Wss, Client)>>>>,
+    clients: RwLock<HashMap<String, ClientKey>>,
     pub pool: Pool<Postgres>,
 }
 
@@ -186,20 +188,17 @@ CREATE TABLE IF NOT EXISTS scores (
             loop {
                 let mut guard = tup.write().await;
                 let (wss, client) = guard.deref_mut();
-                match tokio::time::timeout_at(
+                if let Ok(o) = tokio::time::timeout_at(
                     tokio::time::Instant::now() + tokio::time::Duration::from_millis(10),
                     wss.next(),
                 )
                 .await
                 {
-                    Ok(o) => {
-                        let msg = o.unwrap().unwrap();
-                        let packet: ClientPacket =
-                            bincode::deserialize(msg.into_data().as_slice()).unwrap();
-                        println!("Server got packet '{:?}'", packet);
-                        client.handle(packet).await;
-                    }
-                    Err(_) => (),
+                    let msg = o.unwrap().unwrap();
+                    let packet: ClientPacket =
+                        bincode::deserialize(msg.into_data().as_slice()).unwrap();
+                    println!("Server got packet '{:?}'", packet);
+                    client.handle(packet).await;
                 }
                 tokio::time::sleep(Duration::from_millis(10)).await;
             }

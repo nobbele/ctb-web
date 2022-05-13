@@ -7,6 +7,7 @@ use super::{
 };
 use crate::{
     azusa::{ClientPacket, ServerPacket},
+    convert::ConvertFrom,
     draw_text_centered,
     promise::Promise,
     score,
@@ -321,6 +322,7 @@ impl Screen for SelectScreen {
                     self.selected_difficulty = idx;
                     data.state.borrow_mut().difficulty_idx = idx;
                     let diff_id = data.state().chart.difficulties[idx].id;
+
                     let entries = data.state_mut().leaderboard.query_local(diff_id).await;
                     let button_title = entries
                         .iter()
@@ -368,7 +370,7 @@ impl Screen for SelectScreen {
                         osu_parser::BeatmapParseOptions::default(),
                     )
                     .unwrap();
-                    let chart = crate::chart::Chart::from_beatmap(&beatmap);
+                    let chart = crate::chart::Chart::convert_from(&beatmap);
 
                     let mut chart_data = ChartCalcData {
                         density: BTreeMap::new(),
@@ -489,6 +491,7 @@ impl Screen for SelectScreen {
     }
 
     fn handle_packet(&mut self, data: SharedGameData, packet: &ServerPacket) {
+        #[allow(clippy::single_match)]
         match packet {
             ServerPacket::Leaderboard { diff_id, scores } => {
                 let current_diff_id = data.state().difficulty().id;

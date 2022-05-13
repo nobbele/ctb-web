@@ -1,5 +1,8 @@
 #![feature(array_windows)]
 #![allow(clippy::eq_op)]
+#![allow(clippy::new_without_default)]
+#![allow(clippy::await_holding_refcell_ref)]
+#![allow(clippy::or_fun_call)]
 
 use std::{
     future::Future,
@@ -12,6 +15,8 @@ pub mod cache;
 pub mod chart;
 pub mod chat;
 pub mod config;
+pub mod convert;
+pub mod frozen;
 pub mod leaderboard;
 pub mod log;
 pub mod math;
@@ -21,7 +26,6 @@ pub mod score;
 pub mod screen;
 pub mod ui;
 pub mod web_socket;
-pub mod frozen;
 
 pub struct Delay {
     target: f32,

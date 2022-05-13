@@ -57,7 +57,7 @@ impl Azusa {
         }
 
         if self.ws.status() == ConnectionStatus::Connected && !self.connected && !self.logging_in {
-            self.send(&ClientPacket::Login(self.token.clone()));
+            self.send(&ClientPacket::Login(self.token));
             self.logging_in = true;
         }
 
@@ -68,7 +68,7 @@ impl Azusa {
                 vec![]
             })
             .iter()
-            .map(|data| bincode::deserialize(&data).unwrap())
+            .map(|data| bincode::deserialize(data).unwrap())
             .inspect(|packet: &ServerPacket| {
                 log_to!(self.data.network, "Got packet: '{:?}'", packet);
             })

@@ -59,7 +59,7 @@ impl Client {
                     Target::Everyone,
                     ServerPacket::Chat(ChatMessagePacket(ChatMessage {
                         username: self.username.clone(),
-                        content: content.clone(),
+                        content,
                     })),
                 );
             }
