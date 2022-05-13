@@ -228,13 +228,7 @@ impl Screen for SelectScreen {
                 .y
                 .clamp(-(bounds.h - screen_height()).max(0.) - 100., 100.);
             if bounds.y != pre_clamp {
-                // Check target is in the same direction as where it got clamped.
-                // Meaning the target is in an unreachable spot such as the top or bottom of the screen.
-                if let Some(scroll_target) = self.scroll_target {
-                    if scroll_target.signum() != self.scroll_vel.signum() {
-                        self.scroll_target = None;
-                    }
-                }
+                self.scroll_target = None;
                 self.scroll_vel = 0.;
             }
 
