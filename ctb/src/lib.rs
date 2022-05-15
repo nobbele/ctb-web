@@ -1,4 +1,5 @@
 #![feature(array_windows)]
+#![feature(once_cell)]
 #![allow(clippy::eq_op)]
 #![allow(clippy::new_without_default)]
 #![allow(clippy::await_holding_refcell_ref)]

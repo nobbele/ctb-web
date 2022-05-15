@@ -175,7 +175,7 @@ impl Screen for SelectScreen {
             self.loading_promise = Some(data.promises().spawn(move || async move {
                 let title = data_clone.state().chart.title.clone();
 
-                let files = load_file(&format!("resources/{}/files.config", title))
+                let files = load_file(&format!("resources/{}/files.json", title))
                     .await
                     .unwrap();
                 let files: Vec<String> = serde_json::from_slice(&files).unwrap();

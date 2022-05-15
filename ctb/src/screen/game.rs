@@ -13,7 +13,7 @@ use crate::{
     leaderboard::Leaderboard,
     log::{LogType, Logger},
     log_to,
-    promise::PromiseExecutor,
+    promise::{Promise, PromiseExecutor},
 };
 use kira::{
     manager::{AudioManager, AudioManagerSettings},
@@ -43,6 +43,10 @@ pub enum GameMessage {
     SetMainVolume(f32),
     SetHitsoundVolume(f32),
     SetOffset(f32),
+    Login {
+        username: String,
+        password: String,
+    },
 }
 
 impl GameMessage {
@@ -65,6 +69,79 @@ impl GameMessage {
     }
 }
 
+#[must_use]
+struct WebRequest {
+    handle: Option<std::thread::JoinHandle<()>>,
+    url: String,
+    body: Option<String>,
+    data: std::sync::Arc<std::lazy::SyncOnceCell<Result<String, String>>>,
+}
+
+impl WebRequest {
+    pub fn post<B>(url: String, body: B) -> WebRequest
+    where
+        B: serde::Serialize + Send + 'static,
+    {
+        let data = std::sync::Arc::new(std::lazy::SyncOnceCell::new());
+
+        WebRequest {
+            handle: None,
+            url,
+            body: Some(serde_json::to_string_pretty(&body).unwrap()),
+            data,
+        }
+    }
+}
+
+impl std::future::Future for WebRequest {
+    type Output = Result<String, String>;
+
+    fn poll(
+        mut self: std::pin::Pin<&mut Self>,
+        _ctx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Self::Output> {
+        if self.handle.is_none() {
+            let req = ureq::post(&self.url);
+            self.handle = Some(std::thread::spawn({
+                let data = self.data.clone();
+                let body = self.body.take().unwrap();
+                move || {
+                    let resp = match req
+                        .send_json(serde_json::from_str::<serde_json::Value>(&body).unwrap())
+                    {
+                        Ok(o) => o,
+                        Err(e) => {
+                            data.set(Err(e.to_string())).unwrap();
+                            return;
+                        }
+                    };
+
+                    let status = resp.status();
+                    let content = match resp.into_string() {
+                        Ok(o) => o,
+                        Err(e) => {
+                            data.set(Err(e.to_string())).unwrap();
+                            return;
+                        }
+                    };
+
+                    data.set(if status == 200 {
+                        Ok(content)
+                    } else {
+                        Err(content)
+                    })
+                    .unwrap();
+                }
+            }));
+        }
+
+        match self.data.get() {
+            Some(o) => std::task::Poll::Ready(o.clone()),
+            None => std::task::Poll::Pending,
+        }
+    }
+}
+
 pub type SharedGameData = Rc<GameData>;
 
 pub struct Game {
@@ -83,6 +160,8 @@ pub struct Game {
     // TODO https://github.com/tesselode/kira/issues/27
     hitsound_volume_handle: VolumeControlHandle,
     main_volume_handle: VolumeControlHandle,
+
+    login_promise: Option<Promise<Result<String, String>>>,
 }
 
 impl Game {
@@ -238,6 +317,7 @@ impl Game {
             sent_ping: false,
             hitsound_volume_handle,
             main_volume_handle,
+            login_promise: None,
         }
     }
 
@@ -315,6 +395,18 @@ impl Game {
             }
         }
 
+        if self.azusa.is_none() {
+            if is_key_pressed(KeyCode::F7) {
+                if let Some(OverlayEnum::Login(_)) = self.overlay {
+                    log_to!(self.data.general, "Closing login overlay");
+                    self.overlay = None;
+                } else {
+                    log_to!(self.data.general, "Opening login overlay");
+                    self.overlay = Some(OverlayEnum::Login(overlay::Login::new(self.data.clone())));
+                }
+            }
+        }
+
         if is_key_pressed(KeyCode::V) {
             self.data
                 .broadcast(GameMessage::change_screen(Visualizer::new()));
@@ -362,6 +454,45 @@ impl Game {
                     self.data.offset.set(offset);
                     set_value("offset", offset);
                 }
+                GameMessage::Login { username, password } => {
+                    #[derive(serde::Serialize)]
+                    struct LoginRequest {
+                        username: String,
+                        password: String,
+                    }
+
+                    self.login_promise = Some(self.data.promises().spawn(|| {
+                        WebRequest::post(
+                            // TODO Implement priority addressing similar to the Azusa client.
+                            "http://127.0.0.1:8080/login".into(),
+                            LoginRequest { username, password },
+                        )
+                    }));
+                }
+            }
+        }
+
+        if let Some(login_promise) = &self.login_promise {
+            if let Some(res) = self.data.promises().try_get(&login_promise) {
+                match res {
+                    Ok(json) => {
+                        #[derive(serde::Deserialize)]
+                        struct LoginResponse {
+                            token: String,
+                        }
+
+                        let resp: LoginResponse = serde_json::from_str(&json).unwrap();
+                        let token_uuid = uuid::Uuid::parse_str(&resp.token).unwrap();
+                        set_value("token", token_uuid);
+                        self.azusa = Some(Azusa::new(self.data.clone(), token_uuid).await);
+                        self.overlay = None;
+                    }
+                    Err(err) => {
+                        log_to!(self.data.general, "Failed to request login token. {}", err)
+                    }
+                }
+
+                self.login_promise = None;
             }
         }
 
