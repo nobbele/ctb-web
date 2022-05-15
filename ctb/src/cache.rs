@@ -35,10 +35,17 @@ fn cache_to_file<R: Read>(key: &str, get: impl Fn() -> R) -> impl Read {
     }
 }
 
+#[derive(Debug)]
+pub enum LoadError {
+    NotWhitelisted,
+    Generic,
+}
+
 pub struct Cache<T> {
     #[allow(dead_code)]
     base_path: PathBuf,
     cache: RefCell<HashMap<String, Arc<T>>>,
+    whitelist: RefCell<Vec<String>>,
 }
 
 impl<T> Cache<T> {
@@ -46,19 +53,24 @@ impl<T> Cache<T> {
         Cache {
             base_path: base_path.into(),
             cache: RefCell::new(HashMap::new()),
+            whitelist: RefCell::new(Vec::new()),
         }
     }
-    pub async fn get<F: Future<Output = Result<T, ()>>>(
+    pub async fn get<F: Future<Output = Result<T, LoadError>>>(
         &self,
         key: &str,
         get: impl FnOnce() -> F,
-    ) -> Result<Arc<T>, ()> {
+    ) -> Result<Arc<T>, LoadError> {
         Ok(match self.cache.borrow_mut().entry(key.to_owned()) {
             std::collections::hash_map::Entry::Occupied(o) => o.get().clone(),
             std::collections::hash_map::Entry::Vacant(e) => {
                 e.insert(Arc::new(get().await?)).clone()
             }
         })
+    }
+
+    pub fn whitelist(&self, path: String) {
+        self.whitelist.borrow_mut().push(path);
     }
 }
 
@@ -123,10 +135,14 @@ where
 impl<T, F> Unpin for WaitForBlockingFuture<T, F> {}
 
 impl Cache<StaticSoundData> {
-    pub async fn get_sound(&self, path: &str, track: TrackId) -> Result<StaticSoundData, ()> {
+    pub async fn get_sound_bypass(
+        &self,
+        path: &str,
+        track: TrackId,
+    ) -> Result<StaticSoundData, LoadError> {
         let res = self
             .get(path, move || async move {
-                let sound_data = load_file(path).await.map_err(|_| ())?;
+                let sound_data = load_file(path).await.map_err(|_| LoadError::Generic)?;
                 WaitForBlockingFuture::new(move || {
                     Ok(StaticSoundData::from_cursor(
                         Cursor::new(sound_data),
@@ -137,7 +153,18 @@ impl Cache<StaticSoundData> {
                 .await
             })
             .await;
-        Ok((*res.map_err(|_| ())?).clone())
+        Ok((*res?).clone())
+    }
+    pub async fn get_sound(
+        &self,
+        path: &str,
+        track: TrackId,
+    ) -> Result<StaticSoundData, LoadError> {
+        if !self.whitelist.borrow().iter().any(|s| s == path) {
+            return Err(LoadError::NotWhitelisted);
+        }
+
+        self.get_sound_bypass(path, track).await
     }
 }
 

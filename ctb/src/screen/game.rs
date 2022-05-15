@@ -147,6 +147,12 @@ impl Game {
             (track, volume)
         };
 
+        let files = load_file("resources/Kizuato/files.json").await.unwrap();
+        let files: Vec<String> = serde_json::from_slice(&files).unwrap();
+        files
+            .into_iter()
+            .for_each(|path| audio_cache.whitelist(format!("resources/Kizuato/{}", path)));
+
         let sound = audio_cache
             .get_sound("resources/Kizuato/audio.wav", main_track.id())
             .await
@@ -156,11 +162,11 @@ impl Game {
         instance.set_volume(0., Tween::default()).unwrap();
 
         let combo_break = audio_cache
-            .get_sound("resources/combobreak.wav", hitsound_track.id())
+            .get_sound_bypass("resources/combobreak.wav", hitsound_track.id())
             .await
             .unwrap();
         let hit_normal = audio_cache
-            .get_sound("resources/hitnormal.wav", hitsound_track.id())
+            .get_sound_bypass("resources/hitnormal.wav", hitsound_track.id())
             .await
             .unwrap();
 

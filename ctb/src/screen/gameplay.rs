@@ -30,8 +30,33 @@ pub struct ReplaySyncFrame<F> {
     pub input_index: u32,
 }
 
+mod system_time_serde {
+    use instant::{Duration, SystemTime};
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    pub fn serialize<S>(value: &SystemTime, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let timestamp = value
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        serializer.serialize_u64(timestamp)
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<SystemTime, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let timestamp = u64::deserialize(deserializer)?;
+        Ok(SystemTime::UNIX_EPOCH + Duration::from_secs(timestamp))
+    }
+}
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Replay<I, S> {
+    #[serde(with = "system_time_serde")]
     pub start: SystemTime,
     pub inputs: Vec<I>,
     pub sync_frames: Vec<ReplaySyncFrame<S>>,

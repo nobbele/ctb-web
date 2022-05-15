@@ -8,3 +8,4 @@ edition = "2021"
 [dependencies]
 osu-types = { path = "../../osu-rs/osu-types" }
 osu-parser = { path = "../../osu-rs/osu-parser" }
+serde_json = "1.0.81"

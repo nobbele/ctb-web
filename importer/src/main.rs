@@ -47,7 +47,7 @@ fn main() {
         .output()
         .unwrap();
 
-    for diff in diffs {
+    for diff in &diffs {
         let beatmap = osu_parser::load_content(
             &std::fs::read_to_string(diff).unwrap(),
             osu_parser::BeatmapParseOptions::default(),
@@ -59,4 +59,20 @@ fn main() {
         )
         .unwrap();
     }
+
+    let file_listing = diffs
+        .into_iter()
+        .cloned()
+        .chain([PathBuf::from("audio.wav"), PathBuf::from("bg.png")].into_iter())
+        .map(|file| {
+            file.strip_prefix(&song_path)
+                .unwrap_or(file.as_path())
+                .to_str()
+                .unwrap()
+                .to_owned()
+        })
+        .collect::<Vec<_>>();
+
+    let files_json = serde_json::to_string_pretty(&file_listing).unwrap();
+    std::fs::write(target_dir.join("files.json"), files_json).unwrap();
 }

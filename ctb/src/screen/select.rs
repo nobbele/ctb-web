@@ -173,10 +173,22 @@ impl Screen for SelectScreen {
             }
 
             self.loading_promise = Some(data.promises().spawn(move || async move {
+                let title = data_clone.state().chart.title.clone();
+
+                let files = load_file(&format!("resources/{}/files.config", title))
+                    .await
+                    .unwrap();
+                let files: Vec<String> = serde_json::from_slice(&files).unwrap();
+                files.into_iter().for_each(|path| {
+                    data_clone
+                        .audio_cache
+                        .whitelist(format!("resources/{}/{}", title, path))
+                });
+
                 let sound = data_clone
                     .audio_cache
                     .get_sound(
-                        &format!("resources/{}/audio.wav", data_clone.state().chart.title),
+                        &format!("resources/{}/audio.wav", title),
                         data_clone.main_track.id(),
                     )
                     .await
