@@ -84,7 +84,7 @@ fn draw_circle_range(
     let mut angle = 0.;
     while angle <= full_angle {
         let first = offset_angle + std::f32::consts::TAU / 4. - angle;
-        let second = first + (DELTA + 0.01);
+        let second = first + DELTA;
         macroquad::shapes::draw_line(
             x + first.cos() * adjusted_radius,
             y + first.sin() * adjusted_radius,
