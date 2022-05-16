@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::{cell::Cell, collections::BTreeMap};
 
 use super::{
     game::{GameMessage, SharedGameData},
@@ -8,7 +8,7 @@ use super::{
 use crate::{
     azusa::{ClientPacket, ServerPacket},
     convert::ConvertFrom,
-    draw_text_centered,
+    draw_circle_range, draw_text_centered,
     promise::Promise,
     score,
     ui::{
@@ -85,6 +85,7 @@ pub struct SelectScreen {
 
     start: MenuButton,
     loading_promise: Option<Promise<(StaticSoundData, Texture2D)>>,
+    started_map: Cell<bool>,
 }
 
 impl SelectScreen {
@@ -147,19 +148,19 @@ impl SelectScreen {
             global_lb: None,
             scroll_target: None,
             chart_data: None,
+            started_map: Cell::new(false),
         }
     }
 
     async fn start_map(&self, data: SharedGameData) {
+        self.started_map.set(true);
         let chart = &self.charts[self.selected_chart];
-        data.broadcast(GameMessage::change_screen(
-            Gameplay::new(
-                data.clone(),
-                &chart.title,
-                &chart.difficulties[self.selected_difficulty].name,
-            )
-            .await,
-        ));
+        data.broadcast(GameMessage::load_screen({
+            let data = data.clone();
+            let chart_title = chart.title.clone();
+            let diff_name = chart.difficulties[self.selected_difficulty].name.clone();
+            async move { Gameplay::new(data, &chart_title, &diff_name).await }
+        }));
     }
 }
 
@@ -172,7 +173,7 @@ impl Screen for SelectScreen {
                 data.promises().cancel(loading_promise);
             }
 
-            self.loading_promise = Some(data.promises().spawn(move || async move {
+            self.loading_promise = Some(data.promises().spawn(async move {
                 let title = data_clone.state().chart.title.clone();
 
                 let files = load_file(&format!("resources/{}/files.json", title))
@@ -306,119 +307,123 @@ impl Screen for SelectScreen {
         }
 
         for message in self.rx.try_iter() {
-            self.chart_list.handle_message(&message);
-            self.start.handle_message(&message);
-            if let Some(leaderboard) = &mut self.local_lb {
-                leaderboard.handle_message(&message);
-            }
-            if let Some(leaderboard) = &mut self.global_lb {
-                leaderboard.handle_message(&message);
-            }
-            if message.target == self.chart_list.id {
-                if let MessageData::MenuButtonList(MenuButtonListMessage::Selected(idx)) =
-                    message.data
-                {
-                    self.selected_chart = idx;
-                    let chart = &self.charts[self.selected_chart];
-                    data.state.borrow_mut().chart = chart.clone();
+            if !self.started_map.get() {
+                self.chart_list.handle_message(&message);
+                self.start.handle_message(&message);
+                if let Some(leaderboard) = &mut self.local_lb {
+                    leaderboard.handle_message(&message);
                 }
-                if let MessageData::MenuButtonList(MenuButtonListMessage::SelectedSub(idx)) =
-                    message.data
-                {
-                    self.selected_difficulty = idx;
-                    data.state.borrow_mut().difficulty_idx = idx;
-                    let diff_id = data.state().chart.difficulties[idx].id;
+                if let Some(leaderboard) = &mut self.global_lb {
+                    leaderboard.handle_message(&message);
+                }
 
-                    let entries = data.state_mut().leaderboard.query_local(diff_id).await;
-                    let button_title = entries
-                        .iter()
-                        .map(|entry| {
-                            (
-                                vec![format!(
-                                    "{} ({:.2}%)",
-                                    entry.score.to_formatted_string(&Locale::en),
-                                    entry.accuracy * 100.
-                                )],
-                                None,
-                            )
-                        })
-                        .collect::<Vec<_>>();
-                    self.local_lb = Some(MenuButtonList::new(
-                        "leaderboard".to_owned(),
-                        Popout::Towards,
-                        Rect::new(5., 5., 400., 0.),
-                        button_title,
-                        self.tx.clone(),
-                    ));
+                if message.target == self.chart_list.id {
+                    if let MessageData::MenuButtonList(MenuButtonListMessage::Selected(idx)) =
+                        message.data
+                    {
+                        self.selected_chart = idx;
+                        let chart = &self.charts[self.selected_chart];
+                        data.state.borrow_mut().chart = chart.clone();
+                    }
+                    if let MessageData::MenuButtonList(MenuButtonListMessage::SelectedSub(idx)) =
+                        message.data
+                    {
+                        self.selected_difficulty = idx;
+                        data.state.borrow_mut().difficulty_idx = idx;
+                        let diff_id = data.state().chart.difficulties[idx].id;
 
-                    let sub_button = &self.chart_list.buttons[self.chart_list.selected]
-                        .1
-                        .as_ref()
-                        .unwrap()[self.chart_list.sub_selected];
-                    self.scroll_target = Some(
-                        sub_button.bounds().y + sub_button.bounds().h / 2.
-                            - self.chart_list.bounds().y,
-                    );
+                        let entries = data.state_mut().leaderboard.query_local(diff_id).await;
+                        let button_title = entries
+                            .iter()
+                            .map(|entry| {
+                                (
+                                    vec![format!(
+                                        "{} ({:.2}%)",
+                                        entry.score.to_formatted_string(&Locale::en),
+                                        entry.accuracy * 100.
+                                    )],
+                                    None,
+                                )
+                            })
+                            .collect::<Vec<_>>();
+                        self.local_lb = Some(MenuButtonList::new(
+                            "leaderboard".to_owned(),
+                            Popout::Towards,
+                            Rect::new(5., 5., 400., 0.),
+                            button_title,
+                            self.tx.clone(),
+                        ));
 
-                    self.global_lb = None;
-                    data.send_server(ClientPacket::RequestLeaderboard(diff_id));
+                        let sub_button = &self.chart_list.buttons[self.chart_list.selected]
+                            .1
+                            .as_ref()
+                            .unwrap()[self.chart_list.sub_selected];
+                        self.scroll_target = Some(
+                            sub_button.bounds().y + sub_button.bounds().h / 2.
+                                - self.chart_list.bounds().y,
+                        );
 
-                    let chart_info = &self.charts[self.selected_chart];
-                    let beatmap_data = load_file(&format!(
-                        "resources/{}/{}.osu",
-                        chart_info.title, chart_info.difficulties[self.selected_difficulty].name
-                    ))
-                    .await
-                    .unwrap();
-                    let beatmap_content = std::str::from_utf8(&beatmap_data).unwrap();
-                    let beatmap = osu_parser::load_content(
-                        beatmap_content,
-                        osu_parser::BeatmapParseOptions::default(),
-                    )
-                    .unwrap();
-                    let chart = crate::chart::Chart::convert_from(&beatmap);
+                        self.global_lb = None;
+                        data.send_server(ClientPacket::RequestLeaderboard(diff_id));
 
-                    let mut chart_data = ChartCalcData {
-                        density: BTreeMap::new(),
-                        angles: BTreeMap::new(),
-                        angle_changes: BTreeMap::new(),
-                    };
-                    for [a, b] in chart.fruits.array_windows::<2>() {
-                        assert_ne!(a.time, b.time);
-                        let time_to_hit = b.time - a.time;
-                        // https://www.desmos.com/calculator/yt3tru6suf
-                        // \frac{1}{1+e^{\frac{v}{100}\left(x-m\right)}}
-                        fn density(diff_ms: f32) -> f32 {
-                            const V: f32 = 3.0 / 100.;
-                            const M: f32 = 166.0;
-                            1. / (1. + (diff_ms * V - M * V).exp())
+                        let chart_info = &self.charts[self.selected_chart];
+                        let beatmap_data = load_file(&format!(
+                            "resources/{}/{}.osu",
+                            chart_info.title,
+                            chart_info.difficulties[self.selected_difficulty].name
+                        ))
+                        .await
+                        .unwrap();
+                        let beatmap_content = std::str::from_utf8(&beatmap_data).unwrap();
+                        let beatmap = osu_parser::load_content(
+                            beatmap_content,
+                            osu_parser::BeatmapParseOptions::default(),
+                        )
+                        .unwrap();
+                        let chart = crate::chart::Chart::convert_from(&beatmap);
+
+                        let mut chart_data = ChartCalcData {
+                            density: BTreeMap::new(),
+                            angles: BTreeMap::new(),
+                            angle_changes: BTreeMap::new(),
+                        };
+                        for [a, b] in chart.fruits.array_windows::<2>() {
+                            assert_ne!(a.time, b.time);
+                            let time_to_hit = b.time - a.time;
+                            // https://www.desmos.com/calculator/yt3tru6suf
+                            // \frac{1}{1+e^{\frac{v}{100}\left(x-m\right)}}
+                            fn density(diff_ms: f32) -> f32 {
+                                const V: f32 = 3.0 / 100.;
+                                const M: f32 = 166.0;
+                                1. / (1. + (diff_ms * V - M * V).exp())
+                            }
+
+                            let angle = a.angle_to(b, chart.fall_time).to_degrees();
+
+                            chart_data
+                                .density
+                                .insert(R32::new(b.time), R32::new(density(time_to_hit * 1000.)));
+                            chart_data
+                                .angles
+                                .insert(R32::new(b.time), R32::new(angle.abs() / 90.));
                         }
+                        for [a, b, c] in chart.fruits.array_windows::<3>() {
+                            let angle_a = a.angle_to(b, chart.fall_time).to_degrees();
+                            let angle_b = b.angle_to(c, chart.fall_time).to_degrees();
 
-                        let angle = a.angle_to(b, chart.fall_time).to_degrees();
+                            let angle_change = angle_a.max(angle_b) - angle_a.min(angle_b);
 
-                        chart_data
-                            .density
-                            .insert(R32::new(b.time), R32::new(density(time_to_hit * 1000.)));
-                        chart_data
-                            .angles
-                            .insert(R32::new(b.time), R32::new(angle.abs() / 90.));
+                            chart_data
+                                .angle_changes
+                                .insert(R32::new(b.time), R32::new(angle_change / 180.));
+                        }
+                        self.chart_data = Some(chart_data);
                     }
-                    for [a, b, c] in chart.fruits.array_windows::<3>() {
-                        let angle_a = a.angle_to(b, chart.fall_time).to_degrees();
-                        let angle_b = b.angle_to(c, chart.fall_time).to_degrees();
-
-                        let angle_change = angle_a.max(angle_b) - angle_a.min(angle_b);
-
-                        chart_data
-                            .angle_changes
-                            .insert(R32::new(b.time), R32::new(angle_change / 180.));
-                    }
-                    self.chart_data = Some(chart_data);
                 }
-            }
-            if message.target == self.start.id {
-                if let MessageData::MenuButton(MenuButtonMessage::Selected) = message.data {
-                    self.start_map(data.clone()).await;
+                if message.target == self.start.id {
+                    if let MessageData::MenuButton(MenuButtonMessage::Selected) = message.data {
+                        self.start_map(data.clone()).await;
+                    }
                 }
             }
         }
@@ -491,6 +496,30 @@ impl Screen for SelectScreen {
                 screen_width() / 2.,
                 screen_height() / 2.,
                 36,
+                WHITE,
+            );
+        }
+
+        if self.started_map.get() {
+            draw_rectangle(
+                0.,
+                0.,
+                screen_width(),
+                screen_height(),
+                Color { a: 0.25, ..BLACK },
+            );
+
+            let value = 2. * get_time() as f32;
+            let range = 0.75;
+            let value_norm = (range * value.sin() + 1.) / 2.0;
+            let angle = (value_norm * std::f32::consts::TAU + 3. * value) % std::f32::consts::TAU;
+            draw_circle_range(
+                screen_width() / 2.,
+                screen_height() / 2.,
+                8.,
+                50.,
+                value_norm,
+                angle,
                 WHITE,
             );
         }

@@ -66,3 +66,31 @@ pub fn draw_text_centered(
         color,
     );
 }
+
+fn draw_circle_range(
+    x: f32,
+    y: f32,
+    tickness: f32,
+    radius: f32,
+    range: f32,
+    offset_angle: f32,
+    color: macroquad::color::Color,
+) {
+    const DELTA: f32 = std::f32::consts::TAU / 128.;
+    let full_angle = std::f32::consts::TAU * range;
+
+    let mut angle = 0.;
+    while angle <= full_angle {
+        let first = offset_angle + std::f32::consts::TAU / 4. - angle;
+        let second = first + (DELTA + 0.01);
+        macroquad::shapes::draw_line(
+            x + first.cos() * radius,
+            y + first.sin() * radius,
+            x + second.cos() * radius,
+            y + second.sin() * radius,
+            tickness,
+            color,
+        );
+        angle += DELTA;
+    }
+}

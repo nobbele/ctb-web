@@ -38,12 +38,12 @@ impl PromiseExecutor {
         }
     }
 
-    pub fn spawn<T: Send + 'static, F>(&mut self, fut: impl FnOnce() -> F + 'static) -> Promise<T>
+    pub fn spawn<T: Send + 'static, F>(&mut self, fut: F) -> Promise<T>
     where
         F: Future<Output = T> + 'static,
     {
         let key = self.promises.insert(FutureOrValue::Future(Box::pin(async {
-            Box::new(fut().await) as Box<dyn Any>
+            Box::new(fut.await) as Box<dyn Any>
         })));
         Promise {
             cancelled_or_finished: Cell::new(true),
@@ -114,7 +114,7 @@ impl<T> Drop for Promise<T> {
 #[test]
 fn test_promise() {
     let mut exec = PromiseExecutor::new();
-    let promise = exec.spawn(|| async { std::future::ready(5).await });
+    let promise = exec.spawn(async { std::future::ready(5).await });
     assert_eq!(exec.try_get(&promise), None);
     exec.poll();
     assert_eq!(exec.try_get(&promise), Some(5));
@@ -150,7 +150,7 @@ fn test_promise() {
         }
     }
 
-    let promise = exec.spawn(|| async { ExampleFuture::new().await });
+    let promise = exec.spawn(async { ExampleFuture::new().await });
 
     loop {
         exec.poll();

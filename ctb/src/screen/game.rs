@@ -28,12 +28,15 @@ use macroquad::prelude::*;
 use ringbuffer::{ConstGenericRingBuffer, RingBuffer, RingBufferExt, RingBufferWrite};
 use std::{
     cell::{Cell, RefCell},
+    future::Future,
+    pin::Pin,
     rc::Rc,
     time::Duration,
 };
 
 pub enum GameMessage {
     ChangeScreen(Box<dyn Screen>),
+    LoadScreen(Pin<Box<dyn Future<Output = Box<dyn Screen + Send>>>>),
     UpdateMusic {
         handle: StaticSoundData,
         looping: bool,
@@ -52,6 +55,17 @@ pub enum GameMessage {
 impl GameMessage {
     pub fn change_screen<S: Screen + 'static>(screen: S) -> Self {
         GameMessage::ChangeScreen(Box::new(screen))
+    }
+
+    pub fn load_screen<S, F>(screen_fut: F) -> Self
+    where
+        S: Screen + Send + 'static,
+        F: Future<Output = S> + 'static,
+    {
+        GameMessage::LoadScreen(Box::pin(async {
+            let screen = screen_fut.await;
+            Box::new(screen) as _
+        }))
     }
 
     pub fn update_music(handle: StaticSoundData) -> Self {
@@ -162,6 +176,7 @@ pub struct Game {
     main_volume_handle: VolumeControlHandle,
 
     login_promise: Option<Promise<Result<String, String>>>,
+    screen_loading_promise: Option<Promise<()>>,
 }
 
 impl Game {
@@ -318,6 +333,7 @@ impl Game {
             hitsound_volume_handle,
             main_volume_handle,
             login_promise: None,
+            screen_loading_promise: None,
         }
     }
 
@@ -461,13 +477,25 @@ impl Game {
                         password: String,
                     }
 
-                    self.login_promise = Some(self.data.promises().spawn(|| {
-                        WebRequest::post(
-                            // TODO Implement priority addressing similar to the Azusa client.
-                            "http://127.0.0.1:8080/login".into(),
-                            LoginRequest { username, password },
-                        )
-                    }));
+                    self.login_promise = Some(self.data.promises().spawn(WebRequest::post(
+                        // TODO Implement priority addressing similar to the Azusa client.
+                        "http://127.0.0.1:8080/login".into(),
+                        LoginRequest { username, password },
+                    )));
+                }
+                GameMessage::LoadScreen(fut) => {
+                    let data = self.data.clone();
+                    let old_loading_promise =
+                        self.screen_loading_promise
+                            .replace(self.data.promises().spawn(async move {
+                                let screen = fut.await;
+                                println!("Loaded Screen. Changing..");
+                                data.broadcast(GameMessage::ChangeScreen(screen));
+                            }));
+                    if let Some(old_loading_promise) = old_loading_promise {
+                        println!("Cancelled");
+                        self.data.promises().cancel(&old_loading_promise);
+                    }
                 }
             }
         }
