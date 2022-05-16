@@ -70,7 +70,7 @@ pub fn draw_text_centered(
 fn draw_circle_range(
     x: f32,
     y: f32,
-    tickness: f32,
+    thickness: f32,
     radius: f32,
     range: f32,
     offset_angle: f32,
@@ -79,16 +79,18 @@ fn draw_circle_range(
     const DELTA: f32 = std::f32::consts::TAU / 128.;
     let full_angle = std::f32::consts::TAU * range;
 
+    let adjusted_radius = radius - thickness / 2.;
+
     let mut angle = 0.;
     while angle <= full_angle {
         let first = offset_angle + std::f32::consts::TAU / 4. - angle;
         let second = first + (DELTA + 0.01);
         macroquad::shapes::draw_line(
-            x + first.cos() * radius,
-            y + first.sin() * radius,
-            x + second.cos() * radius,
-            y + second.sin() * radius,
-            tickness,
+            x + first.cos() * adjusted_radius,
+            y + first.sin() * adjusted_radius,
+            x + second.cos() * adjusted_radius,
+            y + second.sin() * adjusted_radius,
+            thickness,
             color,
         );
         angle += DELTA;
