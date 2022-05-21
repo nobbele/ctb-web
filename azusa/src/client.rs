@@ -16,8 +16,6 @@ pub struct Client {
 
 impl Client {
     pub fn new(username: String, user_id: u32, app: &'static App) -> Self {
-        app.send(Target::User(username.clone()), ServerPacket::Connected);
-        app.send(Target::User(username.clone()), ServerPacket::Connected);
         app.send(
             Target::User(username.clone()),
             ServerPacket::Chat(ChatMessagePacket(ChatMessage {

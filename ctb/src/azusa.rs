@@ -12,7 +12,9 @@ pub enum ServerPacket {
     Pong,
     Echo(String),
     Chat(ChatMessagePacket),
-    Connected,
+    Connected {
+        version: String,
+    },
     Leaderboard {
         diff_id: u32,
         scores: Vec<CatchScore>,

@@ -40,10 +40,10 @@ fn main() {
         .unwrap();
 
     Command::new("convert")
-        .args(dbg!([
+        .args([
             song_path.join(bg_file_path).to_str().unwrap(),
             target_dir.join("bg.png").to_str().unwrap(),
-        ]))
+        ])
         .output()
         .unwrap();
 

@@ -83,78 +83,84 @@ impl GameMessage {
     }
 }
 
-#[must_use]
-struct WebRequest {
-    handle: Option<std::thread::JoinHandle<()>>,
-    url: String,
-    body: Option<String>,
-    data: std::sync::Arc<std::lazy::SyncOnceCell<Result<String, String>>>,
-}
+#[cfg(not(target_arch = "wasm32"))]
+mod web_req {
+    #[must_use]
+    pub struct WebRequest {
+        handle: Option<std::thread::JoinHandle<()>>,
+        url: String,
+        body: Option<String>,
+        data: std::sync::Arc<std::lazy::SyncOnceCell<Result<String, String>>>,
+    }
 
-impl WebRequest {
-    pub fn post<B>(url: String, body: B) -> WebRequest
-    where
-        B: serde::Serialize + Send + 'static,
-    {
-        let data = std::sync::Arc::new(std::lazy::SyncOnceCell::new());
+    impl WebRequest {
+        pub fn post<B>(url: String, body: B) -> WebRequest
+        where
+            B: serde::Serialize + Send + 'static,
+        {
+            let data = std::sync::Arc::new(std::lazy::SyncOnceCell::new());
 
-        WebRequest {
-            handle: None,
-            url,
-            body: Some(serde_json::to_string_pretty(&body).unwrap()),
-            data,
+            WebRequest {
+                handle: None,
+                url,
+                body: Some(serde_json::to_string_pretty(&body).unwrap()),
+                data,
+            }
+        }
+    }
+
+    impl std::future::Future for WebRequest {
+        type Output = Result<String, String>;
+
+        fn poll(
+            mut self: std::pin::Pin<&mut Self>,
+            _ctx: &mut std::task::Context<'_>,
+        ) -> std::task::Poll<Self::Output> {
+            if self.handle.is_none() {
+                let req = ureq::post(&self.url);
+                self.handle = Some(std::thread::spawn({
+                    let data = self.data.clone();
+                    let body = self.body.take().unwrap();
+                    move || {
+                        let resp = match req
+                            .send_json(serde_json::from_str::<serde_json::Value>(&body).unwrap())
+                        {
+                            Ok(o) => o,
+                            Err(e) => {
+                                data.set(Err(e.to_string())).unwrap();
+                                return;
+                            }
+                        };
+
+                        let status = resp.status();
+                        let content = match resp.into_string() {
+                            Ok(o) => o,
+                            Err(e) => {
+                                data.set(Err(e.to_string())).unwrap();
+                                return;
+                            }
+                        };
+
+                        data.set(if status == 200 {
+                            Ok(content)
+                        } else {
+                            Err(content)
+                        })
+                        .unwrap();
+                    }
+                }));
+            }
+
+            match self.data.get() {
+                Some(o) => std::task::Poll::Ready(o.clone()),
+                None => std::task::Poll::Pending,
+            }
         }
     }
 }
 
-impl std::future::Future for WebRequest {
-    type Output = Result<String, String>;
-
-    fn poll(
-        mut self: std::pin::Pin<&mut Self>,
-        _ctx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<Self::Output> {
-        if self.handle.is_none() {
-            let req = ureq::post(&self.url);
-            self.handle = Some(std::thread::spawn({
-                let data = self.data.clone();
-                let body = self.body.take().unwrap();
-                move || {
-                    let resp = match req
-                        .send_json(serde_json::from_str::<serde_json::Value>(&body).unwrap())
-                    {
-                        Ok(o) => o,
-                        Err(e) => {
-                            data.set(Err(e.to_string())).unwrap();
-                            return;
-                        }
-                    };
-
-                    let status = resp.status();
-                    let content = match resp.into_string() {
-                        Ok(o) => o,
-                        Err(e) => {
-                            data.set(Err(e.to_string())).unwrap();
-                            return;
-                        }
-                    };
-
-                    data.set(if status == 200 {
-                        Ok(content)
-                    } else {
-                        Err(content)
-                    })
-                    .unwrap();
-                }
-            }));
-        }
-
-        match self.data.get() {
-            Some(o) => std::task::Poll::Ready(o.clone()),
-            None => std::task::Poll::Pending,
-        }
-    }
-}
+#[cfg(not(target_arch = "wasm32"))]
+use web_req::*;
 
 pub type SharedGameData = Rc<GameData>;
 
@@ -471,17 +477,26 @@ impl Game {
                     set_value("offset", offset);
                 }
                 GameMessage::Login { username, password } => {
-                    #[derive(serde::Serialize)]
-                    struct LoginRequest {
-                        username: String,
-                        password: String,
+                    #[cfg(target_arch = "wasm32")]
+                    {
+                        let _ = (username, password);
+                        panic!("Login not supported on web");
                     }
 
-                    self.login_promise = Some(self.data.promises().spawn(WebRequest::post(
-                        // TODO Implement priority addressing similar to the Azusa client.
-                        "http://127.0.0.1:8080/login".into(),
-                        LoginRequest { username, password },
-                    )));
+                    #[cfg(not(target_arch = "wasm32"))]
+                    {
+                        #[derive(serde::Serialize)]
+                        struct LoginRequest {
+                            username: String,
+                            password: String,
+                        }
+
+                        self.login_promise = Some(self.data.promises().spawn(WebRequest::post(
+                            // TODO Implement priority addressing similar to the Azusa client.
+                            "http://127.0.0.1:8080/login".into(),
+                            LoginRequest { username, password },
+                        )));
+                    }
                 }
                 GameMessage::LoadScreen(fut) => {
                     let data = self.data.clone();
@@ -543,8 +558,8 @@ impl Game {
             for msg in azusa.receive() {
                 self.screen.handle_packet(self.data.clone(), &msg);
                 match msg {
-                    ServerPacket::Connected => {
-                        log_to!(self.data.network, "Connected to Azusa!");
+                    ServerPacket::Connected { version } => {
+                        log_to!(self.data.network, "Connected to Azusa ({})!", version);
                         azusa.set_connected(true);
                     }
                     ServerPacket::Echo(s) => {

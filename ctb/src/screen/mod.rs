@@ -84,10 +84,6 @@ pub fn get_charts() -> Vec<ChartInfo> {
                     name: "tocean's Salad".to_string(),
                 },
                 DifficultyInfo {
-                    id: 7,
-                    name: "Platter".to_string(),
-                },
-                DifficultyInfo {
                     id: 8,
                     name: "MBomb's Light Rain".to_string(),
                 },

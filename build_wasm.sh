@@ -121,5 +121,5 @@ sed -i "s/imports\['env'\] = __wbg_star0;/return imports.wbg\;/" dist/$PROJECT_N
 # Create index from the HTML variable
 echo "$HTML" > dist/index.html
 
-rm -r dist/resources
+rm -rf dist/resources
 cp -r resources dist/

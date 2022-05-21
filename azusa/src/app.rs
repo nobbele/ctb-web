@@ -182,7 +182,12 @@ CREATE TABLE IF NOT EXISTS scores (
                 .await
                 .insert(username.clone(), tup.clone());
             self.tx
-                .send((Target::User(username.clone()), ServerPacket::Connected))
+                .send((
+                    Target::User(username.clone()),
+                    ServerPacket::Connected {
+                        version: std::env::var("VERSION").unwrap_or_else(|_| "Invalid".into()),
+                    },
+                ))
                 .unwrap();
             println!("Client login sucessful. Username: {}", username);
 
