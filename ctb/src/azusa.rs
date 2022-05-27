@@ -43,7 +43,10 @@ pub struct Azusa {
 
 impl Azusa {
     pub async fn new(data: SharedGameData, token: uuid::Uuid) -> Self {
-        let ws = WebSocket::new(data.clone(), vec!["ws://127.0.0.1:3012", "ws://azusa.null"]);
+        let ws = WebSocket::new(
+            data.clone(),
+            vec!["ws://127.0.0.1:3012", "ws://azusa.nobbele.dev:3012"],
+        );
         Azusa {
             ws,
             connected: false,
@@ -88,6 +91,7 @@ impl Azusa {
     }
 
     pub fn send(&self, message: &ClientPacket) {
+        log_to!(self.data.network, "Sending packet: {:?}", message);
         self.ws.send(bincode::serialize(message).unwrap());
     }
 }
