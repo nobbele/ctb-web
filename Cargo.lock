@@ -397,7 +397,6 @@ dependencies = [
  "dotenv",
  "flume",
  "futures",
- "rust-argon2",
  "sqlx",
  "tokio",
  "tokio-tungstenite",

@@ -12,4 +12,3 @@ futures = "0.3.21"
 flume = "0.10.11"
 sqlx = { version = "0.5.11", features = ["runtime-tokio-native-tls", "postgres", "uuid"] }
 dotenv = "0.15.0"
-rust-argon2 = "1.0.0"
