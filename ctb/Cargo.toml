@@ -24,6 +24,7 @@ egui-macroquad = "0.9.0"
 noisy_float = "0.2.0"
 rmp-serde = "1.1.0"
 time = { version = "0.3.9", features = ["formatting"] }
+quad-net = "0.1.1"
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 gluesql = { version = "0.10.2", default-features = false, features = ["sled-storage"] }
@@ -41,15 +42,7 @@ web-sys = { version = "0.3.56", default-features = false, features = [
     "MessageEvent",
     "ProgressEvent",
     "WebSocket",
-
-    "Headers",
-    "Request",
-    "RequestInit",
-    "RequestMode",
-    "Response",
-    "Window"
 ]}
-wasm-bindgen-futures = "0.4.30"
 sapp-jsutils = "0.1.5"
 wasm-bindgen = { version = "0.2.79", features = ["serde-serialize"] }
 js-sys = "0.3.56"

@@ -864,6 +864,7 @@ dependencies = [
  "osu-types",
  "osu-utils",
  "parking_lot 0.12.0",
+ "quad-net",
  "qws",
  "ringbuffer",
  "rmp-serde",
@@ -876,7 +877,6 @@ dependencies = [
  "ureq",
  "uuid",
  "wasm-bindgen",
- "wasm-bindgen-futures",
  "web-sys",
 ]
 
@@ -2012,6 +2012,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "nanoserde"
+version = "0.1.29"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2786e3e6331deef0ed595643fb9266686369917bdf99b4169701399c9d262868"
+dependencies = [
+ "nanoserde-derive",
+]
+
+[[package]]
+name = "nanoserde-derive"
+version = "0.1.18"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "290eec6719d68aef1f5ca0e695f8ad6421adcf8791fc17641c4ccc6c5388fb39"
+
+[[package]]
 name = "native-tls"
 version = "0.2.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2574,6 +2589,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "quad-net"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4b697fe4057cb8a40c8822fa0ad8ecc999be6acb70a2b36cbcf1fba51e42f190"
+dependencies = [
+ "nanoserde",
+ "qws",
+ "sapp-jsutils",
+ "ureq",
+]
+
+[[package]]
 name = "quad-rand"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2619,6 +2646,7 @@ dependencies = [
  "log",
  "mio 0.6.23",
  "mio-extras",
+ "openssl",
  "rand 0.4.6",
  "sha1",
  "slab",
@@ -3826,18 +3854,6 @@ dependencies = [
  "quote",
  "syn",
  "wasm-bindgen-shared",
-]
-
-[[package]]
-name = "wasm-bindgen-futures"
-version = "0.4.30"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6f741de44b75e14c35df886aff5f1eb73aa114fa5d4d00dcd37b5e01259bf3b2"
-dependencies = [
- "cfg-if 1.0.0",
- "js-sys",
- "wasm-bindgen",
- "web-sys",
 ]
 
 [[package]]

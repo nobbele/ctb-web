@@ -14,7 +14,6 @@ use crate::{
     log::{LogType, Logger},
     log_to,
     promise::{Promise, PromiseExecutor},
-    web_request,
 };
 use kira::{
     manager::{AudioManager, AudioManagerSettings},
@@ -86,11 +85,6 @@ impl GameMessage {
 
 pub type SharedGameData = Rc<GameData>;
 
-#[derive(Debug, Clone, serde::Deserialize)]
-struct LoginResponse {
-    token: String,
-}
-
 pub struct Game {
     pub logger: Logger,
     pub data: SharedGameData,
@@ -108,7 +102,7 @@ pub struct Game {
     hitsound_volume_handle: VolumeControlHandle,
     main_volume_handle: VolumeControlHandle,
 
-    login_promise: Option<Promise<Result<LoginResponse, String>>>,
+    login_request: Option<quad_net::http_request::Request>,
     screen_loading_promise: Option<Promise<()>>,
 }
 
@@ -265,7 +259,7 @@ impl Game {
             sent_ping: false,
             hitsound_volume_handle,
             main_volume_handle,
-            login_promise: None,
+            login_request: None,
             screen_loading_promise: None,
         }
     }
@@ -410,11 +404,16 @@ impl Game {
                         password: String,
                     }
 
-                    self.login_promise = Some(self.data.promises().spawn(web_request::post(
-                        // TODO Implement priority addressing similar to the Azusa client.
-                        "http://127.0.0.1:8080/login".into(),
-                        LoginRequest { username, password },
-                    )));
+                    self.login_request = Some(
+                        quad_net::http_request::RequestBuilder::new("http://127.0.0.1:8080/login")
+                            .method(quad_net::http_request::Method::Post)
+                            .body(
+                                &serde_json::to_string(&LoginRequest { username, password })
+                                    .unwrap(),
+                            )
+                            .header("Content-Type", "application/json")
+                            .send(),
+                    );
                 }
                 GameMessage::LoadScreen(fut) => {
                     let data = self.data.clone();
@@ -433,10 +432,16 @@ impl Game {
             }
         }
 
-        if let Some(login_promise) = &self.login_promise {
-            if let Some(res) = self.data.promises().try_get(&login_promise) {
+        if let Some(login_request) = &mut self.login_request {
+            if let Some(res) = login_request.try_recv() {
                 match res {
                     Ok(resp) => {
+                        #[derive(Debug, Clone, serde::Deserialize)]
+                        struct LoginResponse {
+                            token: String,
+                        }
+
+                        let resp: LoginResponse = serde_json::from_str(&resp).unwrap();
                         let token_uuid = uuid::Uuid::parse_str(&resp.token).unwrap();
                         set_value("token", token_uuid);
                         self.azusa = Some(Azusa::new(self.data.clone(), token_uuid).await);
@@ -447,7 +452,7 @@ impl Game {
                     }
                 }
 
-                self.login_promise = None;
+                self.login_request = None;
             }
         }
 
