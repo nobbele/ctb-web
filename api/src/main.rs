@@ -1,7 +1,12 @@
+use actix_cors::Cors;
 use actix_web::{guard, middleware, web, App, HttpServer};
 
 mod db;
 mod routes;
+
+async fn index() -> String {
+    "Welcome to CTB-Web API".into()
+}
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -17,12 +22,22 @@ async fn main() -> std::io::Result<()> {
         .expect("Failed to create pool");
 
     HttpServer::new(move || {
-        App::new().app_data(web::Data::new(pool.clone())).service(
-            web::resource("/login")
-                .wrap(middleware::Logger::default())
-                .guard(guard::Post())
-                .to(routes::login),
-        )
+        App::new()
+            .wrap(Cors::permissive())
+            .app_data(web::Data::new(pool.clone()))
+            .route("/", web::get().to(index))
+            .service(
+                web::resource("/login")
+                    .wrap(middleware::Logger::default())
+                    .guard(guard::Post())
+                    .to(routes::login),
+            )
+            .service(
+                web::resource("/register")
+                    .wrap(middleware::Logger::default())
+                    .guard(guard::Post())
+                    .to(routes::register),
+            )
     })
     .bind(("127.0.0.1", 8080))?
     .run()

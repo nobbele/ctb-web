@@ -43,6 +43,7 @@ impl App {
 CREATE TABLE IF NOT EXISTS users (
     user_id INT GENERATED ALWAYS AS IDENTITY NOT NULL,
     username TEXT NOT NULL,
+    email TEXT NOT NULL,
     password TEXT NOT NULL,
     PRIMARY KEY(user_id)
 );
