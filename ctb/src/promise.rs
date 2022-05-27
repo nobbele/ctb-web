@@ -4,13 +4,17 @@ use std::{any::Any, cell::Cell, future::Future, marker::PhantomData, pin::Pin};
 fn null_waker() -> std::task::Waker {
     let w = ();
     fn _nothing1(_: *const ()) -> std::task::RawWaker {
-        panic!()
+        //panic!()
+        std::task::RawWaker::new(
+            &() as *const (),
+            &std::task::RawWakerVTable::new(_nothing1, _nothing2, _nothing3, _nothing4),
+        )
     }
     fn _nothing2(_: *const ()) {
-        panic!()
+        //panic!()
     }
     fn _nothing3(_: *const ()) {
-        panic!()
+        //panic!()
     }
     fn _nothing4(_: *const ()) {}
     unsafe {

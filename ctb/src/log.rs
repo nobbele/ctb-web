@@ -1,4 +1,5 @@
 use instant::{Duration, Instant, SystemTime};
+use macroquad::logging::info;
 use std::{fs::File, io::Write, path::Path};
 
 #[macro_export]
@@ -158,7 +159,7 @@ impl Logger {
                 }
 
                 if entry.print {
-                    println!("{}", line);
+                    info!("{}", line);
                 }
             }
 

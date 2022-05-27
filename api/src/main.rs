@@ -11,7 +11,7 @@ async fn index() -> String {
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     dotenv::dotenv().unwrap();
-    std::env::set_var("RUST_LOG", "actix_web=info");
+    std::env::set_var("RUST_LOG", "actix_web=debug");
     env_logger::init();
 
     println!("Starting server at http://127.0.0.1:8080");

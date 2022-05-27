@@ -14,6 +14,7 @@ use crate::{
     log::{LogType, Logger},
     log_to,
     promise::{Promise, PromiseExecutor},
+    web_request,
 };
 use kira::{
     manager::{AudioManager, AudioManagerSettings},
@@ -83,86 +84,12 @@ impl GameMessage {
     }
 }
 
-#[cfg(not(target_arch = "wasm32"))]
-mod web_req {
-    #[must_use]
-    pub struct WebRequest {
-        handle: Option<std::thread::JoinHandle<()>>,
-        url: String,
-        body: Option<String>,
-        data: std::sync::Arc<std::lazy::SyncOnceCell<Result<String, String>>>,
-    }
-
-    impl WebRequest {
-        pub fn post<B>(url: String, body: B) -> WebRequest
-        where
-            B: serde::Serialize + Send + 'static,
-        {
-            let data = std::sync::Arc::new(std::lazy::SyncOnceCell::new());
-
-            WebRequest {
-                handle: None,
-                url,
-                body: Some(serde_json::to_string_pretty(&body).unwrap()),
-                data,
-            }
-        }
-    }
-
-    impl std::future::Future for WebRequest {
-        type Output = Result<String, String>;
-
-        fn poll(
-            mut self: std::pin::Pin<&mut Self>,
-            _ctx: &mut std::task::Context<'_>,
-        ) -> std::task::Poll<Self::Output> {
-            if self.handle.is_none() {
-                let req = ureq::post(&self.url);
-                self.handle = Some(std::thread::spawn({
-                    let data = self.data.clone();
-                    let body = self.body.take().unwrap();
-                    move || {
-                        let resp = match req
-                            .send_json(serde_json::from_str::<serde_json::Value>(&body).unwrap())
-                        {
-                            Ok(o) => o,
-                            Err(e) => {
-                                data.set(Err(e.to_string())).unwrap();
-                                return;
-                            }
-                        };
-
-                        let status = resp.status();
-                        let content = match resp.into_string() {
-                            Ok(o) => o,
-                            Err(e) => {
-                                data.set(Err(e.to_string())).unwrap();
-                                return;
-                            }
-                        };
-
-                        data.set(if status == 200 {
-                            Ok(content)
-                        } else {
-                            Err(content)
-                        })
-                        .unwrap();
-                    }
-                }));
-            }
-
-            match self.data.get() {
-                Some(o) => std::task::Poll::Ready(o.clone()),
-                None => std::task::Poll::Pending,
-            }
-        }
-    }
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-use web_req::*;
-
 pub type SharedGameData = Rc<GameData>;
+
+#[derive(Debug, Clone, serde::Deserialize)]
+struct LoginResponse {
+    token: String,
+}
 
 pub struct Game {
     pub logger: Logger,
@@ -181,7 +108,7 @@ pub struct Game {
     hitsound_volume_handle: VolumeControlHandle,
     main_volume_handle: VolumeControlHandle,
 
-    login_promise: Option<Promise<Result<String, String>>>,
+    login_promise: Option<Promise<Result<LoginResponse, String>>>,
     screen_loading_promise: Option<Promise<()>>,
 }
 
@@ -477,26 +404,17 @@ impl Game {
                     set_value("offset", offset);
                 }
                 GameMessage::Login { username, password } => {
-                    #[cfg(target_arch = "wasm32")]
-                    {
-                        let _ = (username, password);
-                        panic!("Login not supported on web");
+                    #[derive(serde::Serialize)]
+                    struct LoginRequest {
+                        username: String,
+                        password: String,
                     }
 
-                    #[cfg(not(target_arch = "wasm32"))]
-                    {
-                        #[derive(serde::Serialize)]
-                        struct LoginRequest {
-                            username: String,
-                            password: String,
-                        }
-
-                        self.login_promise = Some(self.data.promises().spawn(WebRequest::post(
-                            // TODO Implement priority addressing similar to the Azusa client.
-                            "http://127.0.0.1:8080/login".into(),
-                            LoginRequest { username, password },
-                        )));
-                    }
+                    self.login_promise = Some(self.data.promises().spawn(web_request::post(
+                        // TODO Implement priority addressing similar to the Azusa client.
+                        "http://127.0.0.1:8080/login".into(),
+                        LoginRequest { username, password },
+                    )));
                 }
                 GameMessage::LoadScreen(fut) => {
                     let data = self.data.clone();
@@ -518,13 +436,7 @@ impl Game {
         if let Some(login_promise) = &self.login_promise {
             if let Some(res) = self.data.promises().try_get(&login_promise) {
                 match res {
-                    Ok(json) => {
-                        #[derive(serde::Deserialize)]
-                        struct LoginResponse {
-                            token: String,
-                        }
-
-                        let resp: LoginResponse = serde_json::from_str(&json).unwrap();
+                    Ok(resp) => {
                         let token_uuid = uuid::Uuid::parse_str(&resp.token).unwrap();
                         set_value("token", token_uuid);
                         self.azusa = Some(Azusa::new(self.data.clone(), token_uuid).await);

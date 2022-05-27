@@ -26,6 +26,7 @@ pub mod rulesets;
 pub mod score;
 pub mod screen;
 pub mod ui;
+pub mod web_request;
 pub mod web_socket;
 
 pub struct Delay {
