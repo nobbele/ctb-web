@@ -38,20 +38,21 @@ fn cache_to_file<R: Read>(key: &str, get: impl Fn() -> R) -> impl Read {
 #[derive(Debug)]
 pub enum LoadError {
     NotWhitelisted,
+    FileError(FileError),
     Generic,
 }
 
 pub struct Cache<T> {
     #[allow(dead_code)]
-    base_path: PathBuf,
+    cache_path: PathBuf,
     cache: RefCell<HashMap<String, Arc<T>>>,
     whitelist: RefCell<Vec<String>>,
 }
 
 impl<T> Cache<T> {
-    pub fn new(base_path: impl Into<PathBuf>) -> Self {
+    pub fn new(cache_path: impl Into<PathBuf>) -> Self {
         Cache {
-            base_path: base_path.into(),
+            cache_path: cache_path.into(),
             cache: RefCell::new(HashMap::new()),
             whitelist: RefCell::new(Vec::new()),
         }
@@ -142,7 +143,7 @@ impl Cache<StaticSoundData> {
     ) -> Result<StaticSoundData, LoadError> {
         let res = self
             .get(path, move || async move {
-                let sound_data = load_file(path).await.map_err(|_| LoadError::Generic)?;
+                let sound_data = load_file(path).await.map_err(LoadError::FileError)?;
                 WaitForBlockingFuture::new(move || {
                     Ok(StaticSoundData::from_cursor(
                         Cursor::new(sound_data),

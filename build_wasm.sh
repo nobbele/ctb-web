@@ -79,7 +79,7 @@ HTML=$(cat <<- END
         }
     </style>
 </head>
-<body>
+<body style="margin: 0; padding: 0; height: 100vh; width: 100vw;">
     <canvas id="glcanvas" tabindex='1' hidden></canvas>
     <script src="https://not-fl3.github.io/miniquad-samples/mq_js_bundle.js"></script>
     <script type="module">
@@ -95,12 +95,16 @@ HTML=$(cat <<- END
             load("./${PROJECT_NAME}_bg.wasm");
         }
         window.run = function() {
+            document.getElementById("run-container").remove();
             document.getElementById("glcanvas").removeAttribute("hidden");
             document.getElementById("glcanvas").focus();
             impl_run();
         }
     </script>
-    <button onclick="run()">Run Game</button>
+    <div id="run-container" style="display: flex; justify-content: center; align-items: center; height: 100%; flex-direction: column;">
+        <p>Game can't play audio unless a button has been clicked.</p>
+        <button onclick="run()">Run Game</button>
+    </div>
 </body>
 </html>
 END

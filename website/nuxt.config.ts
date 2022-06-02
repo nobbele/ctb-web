@@ -6,7 +6,7 @@ export default defineNuxtConfig({
         strict: true,
         typeCheck: true,
     },
-    css: ["@/assets/reset.css"],
+    css: ["@/assets/reset.css", "@/assets/general.sass"],
     build: {
         loaders: {
             sass: {
@@ -16,4 +16,5 @@ export default defineNuxtConfig({
             },
         },
     },
+    modules: ['@nuxtjs/proxy'],
 });

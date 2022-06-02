@@ -16,11 +16,7 @@
 </template>
 
 <script lang="ts">
-export interface RegistrationData {
-    username: String,
-    email: String,
-    password: String
-}
+import { RegistrationData } from "plugins/api";
 
 interface Data {
     username: String | null,
@@ -52,6 +48,8 @@ export default defineComponent({
 </script>
 
 <style lang="sass" scoped>
+@use '@/assets/general.sass'
+
 form
     display: flex
     flex-direction: column
@@ -65,11 +63,7 @@ form
     align-items: center
 
 input
-    background-color: white
-    border-radius: 4px
-
-    margin: 8px
-    padding: 2px
+    +general.plain-button
 
 input[type=submit]
     width: fit-content
