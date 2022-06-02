@@ -16,5 +16,4 @@ export default defineNuxtConfig({
             },
         },
     },
-    modules: ['@nuxtjs/proxy'],
 });

@@ -1,12 +1,7 @@
 <template>
     <div class="page-wrapper">
-        <header class="header-wrapper">
-            <nav>
-                <NuxtLink to="/">Home</NuxtLink>
-                <NuxtLink to="/play">Play</NuxtLink>
-                <NuxtLink to="/registration">Register</NuxtLink>
-            </nav>
-        </header>
+        <Header />
+        <div class="seperator" />
         <transition-group name="notification-list" tag="ul" class="notification-wrapper">
             <li v-for="notification in activeNotifications" class="notification" :key="notification.id">
                 <notification :message="notification.message" :type="notification.type" />
@@ -34,25 +29,19 @@ export default defineComponent({
 </script>
 
 <style lang="sass" scoped>
-@use '@/assets/general.sass'
-
-nav
-    display: flex
-
-    justify-content: center
-    align-items: center
-
-nav > a
-    +general.plain-button
-
 .page-wrapper
     height: 100%
 
     display: flex
     flex-direction: column
 
-.header-wrapper
-    flex-shrink: 1
+.seperator
+    height: 0.2em
+    margin-left: 4px
+    margin-right: 4px
+
+    background: black
+    border-radius: 8px
 
 :deep(.notification-wrapper)
     position: absolute

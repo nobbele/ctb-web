@@ -10,8 +10,5 @@
     "nuxt": "3.0.0-rc.3",
     "sass": "1.52.1",
     "sass-loader": "13.0.0"
-  },
-  "dependencies": {
-    "@nuxtjs/proxy": "^2.1.0"
   }
 }
