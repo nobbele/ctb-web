@@ -531,6 +531,9 @@ impl Screen for Gameplay<CatchRuleset> {
                 RED,
             );
         }
+
+        let drawable_catcher_width = self.chart.catcher_width * self.scale();
+        let catcher_sprite_ratio = data.catcher.width() / data.catcher.height();
         draw_texture_ex(
             data.catcher,
             self.playfield_to_screen_x(self.ruleset.position)
@@ -539,8 +542,8 @@ impl Screen for Gameplay<CatchRuleset> {
             WHITE,
             DrawTextureParams {
                 dest_size: Some(vec2(
-                    self.chart.catcher_width * self.scale(),
-                    self.chart.catcher_width * self.scale(),
+                    drawable_catcher_width,
+                    drawable_catcher_width / catcher_sprite_ratio,
                 )),
                 ..Default::default()
             },
