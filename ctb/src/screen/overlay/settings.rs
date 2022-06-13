@@ -93,11 +93,13 @@ impl Overlay for Settings {
                         }
                     });
 
-                    ui.label("Offset");
+                    ui.label("General");
+
                     let offset = ui.add(
                         egui::Slider::new(&mut self.offset_ms, -100..=100)
                             .show_value(true)
                             .suffix(" ms")
+                            .text("Offset")
                             .show_value(true),
                     );
                     if offset.changed() {

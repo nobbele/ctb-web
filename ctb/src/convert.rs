@@ -18,6 +18,7 @@ pub fn from_hitobject(
     small: bool,
     color: Color,
     plate_reset: bool,
+    fall_multiplier: f32,
 ) -> Fruit {
     Fruit {
         position: hitobject.position.0 as f32,
@@ -30,6 +31,7 @@ pub fn from_hitobject(
         }),
         color,
         plate_reset,
+        fall_multiplier,
     }
 }
 
@@ -80,6 +82,14 @@ impl ConvertFrom<osu_parser::Beatmap> for Chart {
                 color_idx %= beatmap.colors.len();
             }
             let color = beatmap.colors[color_idx];
+
+            let opx_per_sec = opx_per_secs
+                .iter()
+                .take_while(|&p| p.0 <= hitobject.time as i32)
+                .last()
+                .unwrap()
+                .1;
+
             let fruit = from_hitobject(
                 hitobject,
                 false,
@@ -90,6 +100,7 @@ impl ConvertFrom<osu_parser::Beatmap> for Chart {
                     a: 1.0,
                 },
                 !is_first && hitobject.new_combo,
+                opx_per_sec / 432.5,
             );
             fruits.push(fruit);
 
@@ -100,12 +111,6 @@ impl ConvertFrom<osu_parser::Beatmap> for Chart {
                 ..
             } = &hitobject.specific
             {
-                let opx_per_sec = opx_per_secs
-                    .iter()
-                    .take_while(|&p| p.0 <= hitobject.time as i32)
-                    .last()
-                    .unwrap()
-                    .1;
                 let bps = bps
                     .iter()
                     .take_while(|&p| p.0 <= hitobject.time as i32)

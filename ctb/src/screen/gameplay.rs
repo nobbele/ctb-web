@@ -121,7 +121,6 @@ pub struct Gameplay<R: Ruleset> {
     event_idx: usize,
     hitsound: HitSoundKind,
     bpm: f32,
-    fall_multiplier: f32,
     volume: f32,
 }
 
@@ -190,7 +189,6 @@ impl Gameplay<CatchRuleset> {
             event_idx: 0,
             hitsound: HitSoundKind::Normal,
             bpm: 180.,
-            fall_multiplier: 1.,
             volume: 1.,
             plate: vec![],
             disposed_fruits: vec![],
@@ -201,9 +199,9 @@ impl Gameplay<CatchRuleset> {
         screen_height() - 148.
     }
 
-    fn fruit_y(&self, time: f32, target: f32) -> f32 {
+    fn fruit_y(&self, time: f32, target: f32, fall_multiplier: f32) -> f32 {
         let time_left = target - time;
-        let progress = 1. - (time_left / self.chart.fall_time);
+        let progress = 1. - (time_left / (self.chart.fall_time / fall_multiplier));
         self.catcher_y() * progress
     }
 
@@ -283,9 +281,6 @@ impl Screen for Gameplay<CatchRuleset> {
                 println!("New Event! {:?}", event.data);
                 match &event.data {
                     EventData::Timing { bpm } => self.bpm = *bpm,
-                    EventData::DiffMod { fall_multiplier } => {
-                        self.fall_multiplier = *fall_multiplier
-                    }
                     EventData::Hitsound { kind, volume } => {
                         self.hitsound = kind.clone();
                         self.volume = *volume;
@@ -525,7 +520,8 @@ impl Screen for Gameplay<CatchRuleset> {
             RED,
         );
 
-        let fruit_travel_distance = self.fruit_y(self.time, 0.) - self.fruit_y(self.prev_time, 0.);
+        let fruit_travel_distance =
+            self.fruit_y(self.time, 0., 1.) - self.fruit_y(self.prev_time, 0., 1.);
         let catcher_hitbox = Rect::new(
             self.ruleset.position - self.chart.catcher_width / 2.,
             self.catcher_y() - fruit_travel_distance / 2.,
@@ -542,6 +538,7 @@ impl Screen for Gameplay<CatchRuleset> {
                     self.time
                 },
                 fruit.time,
+                fruit.fall_multiplier,
             );
 
             let mut radius = self.chart.fruit_radius * self.scale(data.clone());
@@ -553,7 +550,9 @@ impl Screen for Gameplay<CatchRuleset> {
                 // queued_fruits are in spawn/hit order currently.
                 // I may change it in the future.
                 // but for now this exists to improve performance.
-                break;
+
+                // using `break` breaks SV.
+                continue;
             }
 
             let color = if fruit.hyper.is_some() {
@@ -574,13 +573,15 @@ impl Screen for Gameplay<CatchRuleset> {
             if self.show_debug_hitbox {
                 let fruit_hitbox = Rect::new(
                     fruit.position - self.chart.fruit_radius,
-                    self.fruit_y(self.time, fruit.time) - fruit_travel_distance / 2.,
+                    self.fruit_y(self.time, fruit.time, fruit.fall_multiplier)
+                        - fruit_travel_distance / 2.,
                     self.chart.fruit_radius * 2.,
                     fruit_travel_distance,
                 );
                 let prev_fruit_hitbox = Rect::new(
                     fruit.position - self.chart.fruit_radius,
-                    self.fruit_y(self.prev_time, fruit.time) - fruit_travel_distance / 2.,
+                    self.fruit_y(self.prev_time, fruit.time, fruit.fall_multiplier)
+                        - fruit_travel_distance / 2.,
                     self.chart.fruit_radius * 2.,
                     fruit_travel_distance,
                 );

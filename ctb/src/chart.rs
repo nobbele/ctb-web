@@ -16,6 +16,7 @@ pub struct Fruit {
     pub additions: Additions,
     pub color: Color,
     pub plate_reset: bool,
+    pub fall_multiplier: f32,
 }
 
 impl Fruit {
@@ -41,7 +42,6 @@ pub enum HitSoundKind {
 pub enum EventData {
     Timing { bpm: f32 },
     Hitsound { kind: HitSoundKind, volume: f32 },
-    DiffMod { fall_multiplier: f32 },
 }
 
 #[derive(Debug)]
