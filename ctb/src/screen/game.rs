@@ -147,6 +147,8 @@ impl Game {
         let panning = get_value::<(f32, f32)>("panning").unwrap_or((0.25, 0.75));
         let main_volume = get_value("main_volume").unwrap_or(0.25);
         let hitsound_volume = get_value("hitsound_volume").unwrap_or(1.0);
+        let max_stack = get_value("max_stack").unwrap_or(16);
+        let playfield_size = get_value("playfield_size").unwrap_or(2. / 3.);
 
         // Linux usually needs a +30ms offset for compatibility with windows. (I think..)
         let offset = get_value("offset").unwrap_or(if cfg!(unix) { 0.03 } else { 0.0 });
@@ -233,6 +235,8 @@ impl Game {
             audio_performance,
             hitsound_track,
             main_track,
+            playfield_size: Cell::new(playfield_size),
+            max_stack: Cell::new(max_stack),
         });
 
         let azusa = if let Some(token) = token {

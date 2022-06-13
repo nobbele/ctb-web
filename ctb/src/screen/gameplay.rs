@@ -207,15 +207,15 @@ impl Gameplay<CatchRuleset> {
         self.catcher_y() * progress
     }
 
-    fn playfield_to_screen_x(&self, x: f32) -> f32 {
-        let visual_width = self.playfield_width() * self.scale();
+    fn playfield_to_screen_x(&self, x: f32, data: SharedGameData) -> f32 {
+        let visual_width = self.playfield_width() * self.scale(data.clone());
         let playfield_x = screen_width() / 2. - visual_width / 2.;
-        playfield_x + x * self.scale()
+        playfield_x + x * self.scale(data)
     }
 
-    fn scale(&self) -> f32 {
+    fn scale(&self, data: SharedGameData) -> f32 {
         let scale = screen_width() / self.playfield_width();
-        scale * 2. / 3.
+        scale * data.playfield_size.get()
     }
 
     fn playfield_width(&self) -> f32 {
@@ -433,7 +433,7 @@ impl Screen for Gameplay<CatchRuleset> {
             }
         }
 
-        if self.plate.len() >= 16 {
+        if self.plate.len() >= data.max_stack.get() as usize {
             should_dispose_plate = true;
         }
 
@@ -501,18 +501,18 @@ impl Screen for Gameplay<CatchRuleset> {
             },
         );
         draw_line(
-            self.playfield_to_screen_x(0.) + 2. / 2.,
+            self.playfield_to_screen_x(0., data.clone()) + 2. / 2.,
             0.,
-            self.playfield_to_screen_x(0.) + 2. / 2.,
+            self.playfield_to_screen_x(0., data.clone()) + 2. / 2.,
             screen_height(),
             2.,
             RED,
         );
 
         draw_line(
-            self.playfield_to_screen_x(self.playfield_width()) + 2. / 2.,
+            self.playfield_to_screen_x(self.playfield_width(), data.clone()) + 2. / 2.,
             0.,
-            self.playfield_to_screen_x(self.playfield_width()) + 2. / 2.,
+            self.playfield_to_screen_x(self.playfield_width(), data.clone()) + 2. / 2.,
             screen_height(),
             2.,
             RED,
@@ -537,7 +537,7 @@ impl Screen for Gameplay<CatchRuleset> {
                 fruit.time,
             );
 
-            let mut radius = self.chart.fruit_radius * self.scale();
+            let mut radius = self.chart.fruit_radius * self.scale(data.clone());
             if fruit.small {
                 radius /= 2.0;
             }
@@ -556,7 +556,7 @@ impl Screen for Gameplay<CatchRuleset> {
             };
             draw_texture_ex(
                 data.fruit,
-                self.playfield_to_screen_x(fruit.position) - radius,
+                self.playfield_to_screen_x(fruit.position, data.clone()) - radius,
                 y - radius,
                 color,
                 DrawTextureParams {
@@ -579,16 +579,16 @@ impl Screen for Gameplay<CatchRuleset> {
                 );
 
                 draw_rectangle(
-                    self.playfield_to_screen_x(fruit_hitbox.x),
+                    self.playfield_to_screen_x(fruit_hitbox.x, data.clone()),
                     fruit_hitbox.y,
-                    fruit_hitbox.w * self.scale(),
+                    fruit_hitbox.w * self.scale(data.clone()),
                     fruit_hitbox.h,
                     BLUE,
                 );
                 draw_rectangle(
-                    self.playfield_to_screen_x(prev_fruit_hitbox.x),
+                    self.playfield_to_screen_x(prev_fruit_hitbox.x, data.clone()),
                     prev_fruit_hitbox.y,
-                    prev_fruit_hitbox.w * self.scale(),
+                    prev_fruit_hitbox.w * self.scale(data.clone()),
                     prev_fruit_hitbox.h,
                     GREEN,
                 );
@@ -596,27 +596,27 @@ impl Screen for Gameplay<CatchRuleset> {
         }
         if self.show_debug_hitbox {
             draw_rectangle(
-                self.playfield_to_screen_x(catcher_hitbox.x),
+                self.playfield_to_screen_x(catcher_hitbox.x, data.clone()),
                 catcher_hitbox.y,
-                catcher_hitbox.w * self.scale(),
+                catcher_hitbox.w * self.scale(data.clone()),
                 catcher_hitbox.h,
                 RED,
             );
         }
 
-        let catcher_position = self.playfield_to_screen_x(self.ruleset.position)
-            - self.chart.catcher_width * self.scale() / 2.;
+        let catcher_position = self.playfield_to_screen_x(self.ruleset.position, data.clone())
+            - self.chart.catcher_width * self.scale(data.clone()) / 2.;
 
         let catcher_sprite_ratio = data.catcher.width() / data.catcher.height();
-        let drawable_catcher_width = self.chart.catcher_width * self.scale();
+        let drawable_catcher_width = self.chart.catcher_width * self.scale(data.clone());
         let drawable_catcher_height = drawable_catcher_width / catcher_sprite_ratio;
 
-        let radius = self.chart.fruit_radius * self.scale();
+        let radius = self.chart.fruit_radius * self.scale(data.clone());
         let plate_y = self.catcher_y() - drawable_catcher_height / 2. + radius;
         for (idx, &(off, color)) in self.plate.iter().enumerate() {
             draw_texture_ex(
                 data.fruit,
-                self.playfield_to_screen_x(self.ruleset.position) - radius
+                self.playfield_to_screen_x(self.ruleset.position, data.clone()) - radius
                     + drawable_catcher_width * off / 2.,
                 plate_y - (radius * 2.) * 0.1 * idx as f32,
                 self.drawable_fruit_color(color),
@@ -644,7 +644,8 @@ impl Screen for Gameplay<CatchRuleset> {
                 let x_offset = fruit.x_speed * disposed_fruits.time_since_dispose;
                 draw_texture_ex(
                     data.fruit,
-                    self.playfield_to_screen_x(disposed_fruits.position) - radius + x_offset,
+                    self.playfield_to_screen_x(disposed_fruits.position, data.clone()) - radius
+                        + x_offset,
                     y,
                     self.drawable_fruit_color(fruit.color),
                     DrawTextureParams {
