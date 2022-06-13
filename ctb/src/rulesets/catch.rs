@@ -10,7 +10,6 @@ use macroquad::prelude::*;
 )]
 pub enum CatchJudgement {
     Perfect,
-    Miss,
 }
 
 pub struct CatchHitDetails {
@@ -24,19 +23,12 @@ impl Judgement for CatchJudgement {
         Self::Perfect
     }
 
-    fn miss() -> Self {
-        Self::Miss
-    }
-
     fn weight(&self) -> f32 {
-        match self {
-            CatchJudgement::Perfect => 1.0,
-            CatchJudgement::Miss => 0.0,
-        }
+        1.0
     }
 
     fn all() -> Vec<Self> {
-        vec![CatchJudgement::Perfect, CatchJudgement::Miss]
+        vec![CatchJudgement::Perfect]
     }
 }
 
@@ -134,7 +126,7 @@ impl Ruleset for CatchRuleset {
         time: f32,
         object: Self::Object,
         chart: &Chart,
-    ) -> JudgementResult<(Self::Judgement, Self::HitDetails)> {
+    ) -> Option<JudgementResult<(Self::Judgement, Self::HitDetails)>> {
         let catcher_height = screen_height() - 148.;
         let current_height =
             Self::fruit_height_at(time, object.time, chart.fall_time, catcher_height);
@@ -145,14 +137,17 @@ impl Ruleset for CatchRuleset {
 
         if off.abs() <= 1. {
             if current_height >= catcher_height && prev_height <= catcher_height {
-                return JudgementResult::Hit((CatchJudgement::Perfect, CatchHitDetails { off }));
+                return Some(JudgementResult::Hit((
+                    CatchJudgement::Perfect,
+                    CatchHitDetails { off },
+                )));
             }
 
             if current_height >= screen_height() {
-                return JudgementResult::Miss;
+                return Some(JudgementResult::Miss);
             }
         }
 
-        JudgementResult::None
+        None
     }
 }

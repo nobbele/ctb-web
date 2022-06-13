@@ -1,4 +1,4 @@
-use crate::rulesets::catch::CatchScore;
+use crate::rulesets::{catch::CatchScore, JudgementResult};
 #[cfg(not(target_family = "wasm"))]
 use {
     crate::rulesets::catch::CatchJudgement,
@@ -34,8 +34,8 @@ impl Leaderboard {
             .execute_async(&format!(
                 include_str!("queries/insert_leaderboard.sql"),
                 score.diff_id,
-                score.judgements[&CatchJudgement::Perfect],
-                score.judgements[&CatchJudgement::Miss],
+                score.judgements[&JudgementResult::Hit(CatchJudgement::Perfect)],
+                score.judgements[&JudgementResult::Miss],
                 score.score,
                 score.top_combo
             ))

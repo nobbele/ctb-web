@@ -15,7 +15,7 @@ use crate::{
         catch::{catcher_speed, CatchInput, CatchRuleset},
         JudgementResult, Ruleset,
     },
-    score::{Judgement, ScoreRecorder},
+    score::ScoreRecorder,
 };
 use async_trait::async_trait;
 use instant::SystemTime;
@@ -299,79 +299,84 @@ impl Screen for Gameplay<CatchRuleset> {
             let audio_dt = self.time - self.prev_time;
             for (idx, &fruit_idx) in self.queued_fruits.iter().enumerate() {
                 let fruit = self.chart.fruits[fruit_idx];
-                if let JudgementResult::Hit((judgement, details)) =
+                if let Some(result) =
                     self.ruleset
                         .test_hitobject(audio_dt, self.time, fruit, &self.chart)
                 {
-                    if judgement.is_hit() {
-                        if !fruit.small {
-                            let panning = math::remap(
-                                0.,
-                                self.playfield_width(),
-                                data.panning().0,
-                                data.panning().1,
-                                self.ruleset.position,
-                            );
+                    match &result {
+                        JudgementResult::Hit((_judgement, details)) => {
+                            if !fruit.small {
+                                let panning = math::remap(
+                                    0.,
+                                    self.playfield_width(),
+                                    data.panning().0,
+                                    data.panning().1,
+                                    self.ruleset.position,
+                                );
 
-                            let hs_type = match &self.hitsound {
-                                crate::chart::HitSoundKind::Normal => "Normal",
-                                crate::chart::HitSoundKind::Soft => "Soft",
-                                crate::chart::HitSoundKind::Drum => "Drum",
-                                crate::chart::HitSoundKind::Custom(s) => s,
-                            };
-                            let base_hs_path =
-                                format!("resources/{}/HitSounds/{}", self.chart_name, hs_type);
+                                let hs_type = match &self.hitsound {
+                                    crate::chart::HitSoundKind::Normal => "Normal",
+                                    crate::chart::HitSoundKind::Soft => "Soft",
+                                    crate::chart::HitSoundKind::Drum => "Drum",
+                                    crate::chart::HitSoundKind::Custom(s) => s,
+                                };
+                                let base_hs_path =
+                                    format!("resources/{}/HitSounds/{}", self.chart_name, hs_type);
 
-                            let play_sound = |name: &'static str| {
-                                let data = data.clone();
-                                let base_hs_path = &base_hs_path;
-                                let volume = self.volume;
-                                async move {
-                                    let hs_data = data
-                                        .audio_cache
-                                        .get_sound(
-                                            &format!("{}/{}.wav", base_hs_path, name),
-                                            data.hitsound_track.id(),
-                                        )
-                                        .await
-                                        .unwrap_or(data.hit_normal.clone());
+                                let play_sound = |name: &'static str| {
+                                    let data = data.clone();
+                                    let base_hs_path = &base_hs_path;
+                                    let volume = self.volume;
+                                    async move {
+                                        let hs_data = data
+                                            .audio_cache
+                                            .get_sound(
+                                                &format!("{}/{}.wav", base_hs_path, name),
+                                                data.hitsound_track.id(),
+                                            )
+                                            .await
+                                            .unwrap_or(data.hit_normal.clone());
 
-                                    let mut hitsound =
-                                        data.audio.borrow_mut().play(hs_data).unwrap();
-                                    hitsound
-                                        .set_panning(panning as f64, Tween::default())
-                                        .unwrap();
-                                    hitsound
-                                        .set_volume(volume as f64, Tween::default())
-                                        .unwrap();
+                                        let mut hitsound =
+                                            data.audio.borrow_mut().play(hs_data).unwrap();
+                                        hitsound
+                                            .set_panning(panning as f64, Tween::default())
+                                            .unwrap();
+                                        hitsound
+                                            .set_volume(volume as f64, Tween::default())
+                                            .unwrap();
+                                    }
+                                };
+
+                                play_sound("Hit").await;
+                                if fruit.additions.whistle {
+                                    play_sound("Whistle").await;
                                 }
-                            };
+                                if fruit.additions.finish {
+                                    play_sound("Finish").await;
+                                }
+                                if fruit.additions.clap {
+                                    play_sound("Clap").await;
+                                }
 
-                            play_sound("Hit").await;
-                            if fruit.additions.whistle {
-                                play_sound("Whistle").await;
-                            }
-                            if fruit.additions.finish {
-                                play_sound("Finish").await;
-                            }
-                            if fruit.additions.clap {
-                                play_sound("Clap").await;
-                            }
+                                if fruit.plate_reset {
+                                    should_dispose_plate = true;
+                                }
 
-                            if fruit.plate_reset {
-                                should_dispose_plate = true;
+                                self.plate.push((details.off, fruit.color));
                             }
-
-                            self.plate.push((details.off, fruit.color));
                         }
-                    } else if self.recorder.combo >= 8 {
-                        data.audio
-                            .borrow_mut()
-                            .play(data.combo_break.clone())
-                            .unwrap();
+                        JudgementResult::Miss => {
+                            if self.recorder.combo >= 8 {
+                                data.audio
+                                    .borrow_mut()
+                                    .play(data.combo_break.clone())
+                                    .unwrap();
+                            }
+                        }
                     }
                     defer_delete.push(idx);
-                    self.recorder.register_judgement(judgement);
+                    self.recorder.register_judgement(result.map_hit(|(j, _)| j));
                 }
             }
 

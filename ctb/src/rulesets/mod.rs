@@ -2,10 +2,21 @@ use crate::{chart::Chart, score::Judgement};
 
 pub mod catch;
 
+#[derive(
+    Debug, Hash, Eq, PartialEq, serde::Serialize, serde::Deserialize, Clone, PartialOrd, Ord,
+)]
 pub enum JudgementResult<H> {
-    None,
     Hit(H),
     Miss,
+}
+
+impl<H> JudgementResult<H> {
+    pub fn map_hit<T>(self, f: impl FnOnce(H) -> T) -> JudgementResult<T> {
+        match self {
+            JudgementResult::Hit(h) => JudgementResult::Hit(f(h)),
+            JudgementResult::Miss => JudgementResult::Miss,
+        }
+    }
 }
 
 pub trait Ruleset {
@@ -48,5 +59,5 @@ pub trait Ruleset {
         time: f32,
         object: Self::Object,
         chart: &Chart,
-    ) -> JudgementResult<(Self::Judgement, Self::HitDetails)>;
+    ) -> Option<JudgementResult<(Self::Judgement, Self::HitDetails)>>;
 }
