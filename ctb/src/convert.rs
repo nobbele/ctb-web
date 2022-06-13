@@ -2,6 +2,7 @@ use crate::{
     chart::{Additions, Chart, Event, EventData, Fruit, HitSoundKind},
     rulesets::catch::catcher_speed,
 };
+use macroquad::prelude::Color;
 use osu_types::SpecificHitObject;
 
 pub fn from_hit_sound_bits(bits: u8) -> Additions {
@@ -12,7 +13,7 @@ pub fn from_hit_sound_bits(bits: u8) -> Additions {
     }
 }
 
-pub fn from_hitobject(hitobject: &osu_types::HitObject, small: bool) -> Fruit {
+pub fn from_hitobject(hitobject: &osu_types::HitObject, small: bool, color: Color) -> Fruit {
     Fruit {
         position: hitobject.position.0 as f32,
         time: hitobject.time as f32 / 1000.,
@@ -22,6 +23,7 @@ pub fn from_hitobject(hitobject: &osu_types::HitObject, small: bool) -> Fruit {
             SpecificHitObject::Slider { edge_sounds, .. } => *edge_sounds.first().unwrap(),
             _ => hitobject.hit_sound,
         }),
+        color,
     }
 }
 
@@ -62,9 +64,26 @@ impl ConvertFrom<osu_parser::Beatmap> for Chart {
             })
             .collect::<Vec<_>>();
 
+        let mut color_idx = 0;
+        let mut is_first = true;
+
         let mut fruits = Vec::with_capacity(beatmap.hit_objects.len());
         for hitobject in &beatmap.hit_objects {
-            let fruit = from_hitobject(hitobject, false);
+            if !is_first && hitobject.new_combo {
+                color_idx += 1;
+                color_idx %= beatmap.colors.len();
+            }
+            let color = beatmap.colors[color_idx];
+            let fruit = from_hitobject(
+                hitobject,
+                false,
+                Color {
+                    r: color.r as f32 / u8::MAX as f32,
+                    g: color.g as f32 / u8::MAX as f32,
+                    b: color.b as f32 / u8::MAX as f32,
+                    a: 1.0,
+                },
+            );
             fruits.push(fruit);
 
             if let osu_types::SpecificHitObject::Slider {
@@ -125,6 +144,8 @@ impl ConvertFrom<osu_parser::Beatmap> for Chart {
                     ..fruit
                 })
             }
+
+            is_first = false;
         }
 
         for idx in 0..fruits.len().saturating_sub(1) {

@@ -1,3 +1,5 @@
+use macroquad::prelude::Color;
+
 #[derive(Debug, Copy, Clone)]
 pub struct Additions {
     pub whistle: bool,
@@ -12,6 +14,7 @@ pub struct Fruit {
     pub hyper: Option<f32>,
     pub small: bool,
     pub additions: Additions,
+    pub color: Color,
 }
 
 impl Fruit {

@@ -482,11 +482,21 @@ impl Screen for Gameplay<CatchRuleset> {
                 radius /= 2.0;
             }
 
+            let color = if fruit.hyper.is_some() {
+                RED
+            } else {
+                Color {
+                    r: math::lerp(fruit.color.r, 1., 0.75),
+                    g: math::lerp(fruit.color.g, 1., 0.75),
+                    b: math::lerp(fruit.color.b, 1., 0.75),
+                    a: math::lerp(fruit.color.a, 1., 0.75),
+                }
+            };
             draw_texture_ex(
                 data.fruit,
                 self.playfield_to_screen_x(fruit.position) - radius,
                 y - radius,
-                if fruit.hyper.is_some() { RED } else { WHITE },
+                color,
                 DrawTextureParams {
                     dest_size: Some(vec2(radius * 2., radius * 2.)),
                     ..Default::default()
