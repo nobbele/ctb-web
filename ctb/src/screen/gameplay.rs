@@ -228,151 +228,156 @@ impl Screen for Gameplay<CatchRuleset> {
             self.predicted_time = data.predicted_time_with_offset();
         }
 
-        for event in self.chart.events[self.event_idx..]
-            .iter()
-            .filter(|event| self.time >= event.time)
-        {
-            println!("New Event! {:?}", event.data);
-            match &event.data {
-                EventData::Timing { bpm } => self.bpm = *bpm,
-                EventData::DiffMod { fall_multiplier } => self.fall_multiplier = *fall_multiplier,
-                EventData::Hitsound { kind, volume } => {
-                    self.hitsound = kind.clone();
-                    self.volume = *volume;
-                }
-            }
-            self.event_idx += 1;
-        }
-
-        let mut defer_delete = Vec::new();
-
-        let audio_dt = self.time - self.prev_time;
-        for (idx, &fruit_idx) in self.queued_fruits.iter().enumerate() {
-            let fruit = self.chart.fruits[fruit_idx];
-            if let Some(judgement) =
-                self.ruleset
-                    .test_hitobject(audio_dt, self.time, fruit, &self.chart)
-            {
-                if judgement.is_hit() {
-                    if !fruit.small {
-                        let panning = math::remap(
-                            0.,
-                            self.playfield_width(),
-                            data.panning().0,
-                            data.panning().1,
-                            self.ruleset.position,
-                        );
-
-                        let hs_type = match &self.hitsound {
-                            crate::chart::HitSoundKind::Normal => "Normal",
-                            crate::chart::HitSoundKind::Soft => "Soft",
-                            crate::chart::HitSoundKind::Drum => "Drum",
-                            crate::chart::HitSoundKind::Custom(s) => s,
-                        };
-                        let base_hs_path =
-                            format!("resources/{}/HitSounds/{}", self.chart_name, hs_type);
-
-                        let play_sound = |name: &'static str| {
-                            let data = data.clone();
-                            let base_hs_path = &base_hs_path;
-                            let volume = self.volume;
-                            async move {
-                                let hs_data = data
-                                    .audio_cache
-                                    .get_sound(
-                                        &format!("{}/{}.wav", base_hs_path, name),
-                                        data.hitsound_track.id(),
-                                    )
-                                    .await
-                                    .unwrap_or(data.hit_normal.clone());
-
-                                let mut hitsound = data.audio.borrow_mut().play(hs_data).unwrap();
-                                hitsound
-                                    .set_panning(panning as f64, Tween::default())
-                                    .unwrap();
-                                hitsound
-                                    .set_volume(volume as f64, Tween::default())
-                                    .unwrap();
-                            }
-                        };
-
-                        play_sound("Hit").await;
-                        if fruit.additions.whistle {
-                            play_sound("Whistle").await;
-                        }
-                        if fruit.additions.finish {
-                            play_sound("Finish").await;
-                        }
-                        if fruit.additions.clap {
-                            play_sound("Clap").await;
-                        }
-                    }
-                } else if self.recorder.combo >= 8 {
-                    data.audio
-                        .borrow_mut()
-                        .play(data.combo_break.clone())
-                        .unwrap();
-                }
-                defer_delete.push(idx);
-                self.recorder.register_judgement(judgement);
-            }
-        }
-
-        let input = if let ReplayType::Playback { input_index, .. } = self.replay_type {
-            self.replay
-                .inputs
-                .get(input_index)
-                .copied()
-                .unwrap_or(CatchInput {
-                    left: false,
-                    right: false,
-                    dash: false,
-                })
-        } else {
-            CatchInput {
-                left: is_key_down(binds.left),
-                right: is_key_down(binds.right),
-                dash: is_key_down(binds.dash),
-            }
-        };
-
-        self.ruleset.update(
-            get_frame_time(),
-            input,
-            &defer_delete
+        if !self.paused {
+            for event in self.chart.events[self.event_idx..]
                 .iter()
-                .map(|&idx| self.chart.fruits[self.queued_fruits[idx]])
-                .collect::<Vec<_>>(),
-        );
-
-        match &mut self.replay_type {
-            ReplayType::Record => {
-                if self.replay.inputs.len() % 10 == 0 {
-                    self.replay.sync_frames.push(ReplaySyncFrame {
-                        time: self.time,
-                        data: self.ruleset.generate_sync_frame(),
-                        input_index: self.replay.inputs.len() as u32,
-                    })
+                .filter(|event| self.time >= event.time)
+            {
+                println!("New Event! {:?}", event.data);
+                match &event.data {
+                    EventData::Timing { bpm } => self.bpm = *bpm,
+                    EventData::DiffMod { fall_multiplier } => {
+                        self.fall_multiplier = *fall_multiplier
+                    }
+                    EventData::Hitsound { kind, volume } => {
+                        self.hitsound = kind.clone();
+                        self.volume = *volume;
+                    }
                 }
-                self.replay.inputs.push(input);
+                self.event_idx += 1;
             }
-            ReplayType::Playback {
-                input_index,
-                sync_frame_index,
-            } => {
-                *input_index += 1;
-                if let Some(next_sync_frame) = self.replay.sync_frames.get(*sync_frame_index) {
-                    if self.time >= next_sync_frame.time {
-                        *input_index = next_sync_frame.input_index as usize;
-                        self.ruleset.handle_sync_frame(&next_sync_frame.data);
-                        *sync_frame_index += 1;
+
+            let mut defer_delete = Vec::new();
+
+            let audio_dt = self.time - self.prev_time;
+            for (idx, &fruit_idx) in self.queued_fruits.iter().enumerate() {
+                let fruit = self.chart.fruits[fruit_idx];
+                if let Some(judgement) =
+                    self.ruleset
+                        .test_hitobject(audio_dt, self.time, fruit, &self.chart)
+                {
+                    if judgement.is_hit() {
+                        if !fruit.small {
+                            let panning = math::remap(
+                                0.,
+                                self.playfield_width(),
+                                data.panning().0,
+                                data.panning().1,
+                                self.ruleset.position,
+                            );
+
+                            let hs_type = match &self.hitsound {
+                                crate::chart::HitSoundKind::Normal => "Normal",
+                                crate::chart::HitSoundKind::Soft => "Soft",
+                                crate::chart::HitSoundKind::Drum => "Drum",
+                                crate::chart::HitSoundKind::Custom(s) => s,
+                            };
+                            let base_hs_path =
+                                format!("resources/{}/HitSounds/{}", self.chart_name, hs_type);
+
+                            let play_sound = |name: &'static str| {
+                                let data = data.clone();
+                                let base_hs_path = &base_hs_path;
+                                let volume = self.volume;
+                                async move {
+                                    let hs_data = data
+                                        .audio_cache
+                                        .get_sound(
+                                            &format!("{}/{}.wav", base_hs_path, name),
+                                            data.hitsound_track.id(),
+                                        )
+                                        .await
+                                        .unwrap_or(data.hit_normal.clone());
+
+                                    let mut hitsound =
+                                        data.audio.borrow_mut().play(hs_data).unwrap();
+                                    hitsound
+                                        .set_panning(panning as f64, Tween::default())
+                                        .unwrap();
+                                    hitsound
+                                        .set_volume(volume as f64, Tween::default())
+                                        .unwrap();
+                                }
+                            };
+
+                            play_sound("Hit").await;
+                            if fruit.additions.whistle {
+                                play_sound("Whistle").await;
+                            }
+                            if fruit.additions.finish {
+                                play_sound("Finish").await;
+                            }
+                            if fruit.additions.clap {
+                                play_sound("Clap").await;
+                            }
+                        }
+                    } else if self.recorder.combo >= 8 {
+                        data.audio
+                            .borrow_mut()
+                            .play(data.combo_break.clone())
+                            .unwrap();
+                    }
+                    defer_delete.push(idx);
+                    self.recorder.register_judgement(judgement);
+                }
+            }
+
+            let input = if let ReplayType::Playback { input_index, .. } = self.replay_type {
+                self.replay
+                    .inputs
+                    .get(input_index)
+                    .copied()
+                    .unwrap_or(CatchInput {
+                        left: false,
+                        right: false,
+                        dash: false,
+                    })
+            } else {
+                CatchInput {
+                    left: is_key_down(binds.left),
+                    right: is_key_down(binds.right),
+                    dash: is_key_down(binds.dash),
+                }
+            };
+
+            self.ruleset.update(
+                get_frame_time(),
+                input,
+                &defer_delete
+                    .iter()
+                    .map(|&idx| self.chart.fruits[self.queued_fruits[idx]])
+                    .collect::<Vec<_>>(),
+            );
+
+            match &mut self.replay_type {
+                ReplayType::Record => {
+                    if self.replay.inputs.len() % 10 == 0 {
+                        self.replay.sync_frames.push(ReplaySyncFrame {
+                            time: self.time,
+                            data: self.ruleset.generate_sync_frame(),
+                            input_index: self.replay.inputs.len() as u32,
+                        })
+                    }
+                    self.replay.inputs.push(input);
+                }
+                ReplayType::Playback {
+                    input_index,
+                    sync_frame_index,
+                } => {
+                    *input_index += 1;
+                    if let Some(next_sync_frame) = self.replay.sync_frames.get(*sync_frame_index) {
+                        if self.time >= next_sync_frame.time {
+                            *input_index = next_sync_frame.input_index as usize;
+                            self.ruleset.handle_sync_frame(&next_sync_frame.data);
+                            *sync_frame_index += 1;
+                        }
                     }
                 }
             }
-        }
 
-        for idx in defer_delete.into_iter().rev() {
-            self.queued_fruits.remove(idx);
+            for idx in defer_delete.into_iter().rev() {
+                self.queued_fruits.remove(idx);
+            }
         }
 
         if self.queued_fruits.is_empty() && !self.ended {
