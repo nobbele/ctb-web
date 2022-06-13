@@ -1,4 +1,7 @@
-use std::{cell::Cell, collections::BTreeMap};
+use std::{
+    cell::Cell,
+    collections::{BTreeMap, HashMap},
+};
 
 use super::{
     game::{GameMessage, SharedGameData},
@@ -7,6 +10,7 @@ use super::{
 };
 use crate::{
     azusa::{ClientPacket, ServerPacket},
+    chart::Chart,
     convert::ConvertFrom,
     draw_circle_range, draw_text_centered,
     promise::Promise,
@@ -60,10 +64,123 @@ fn interpolate(max: f32, tree: &BTreeMap<R32, R32>) -> impl Fn(f32) -> f32 + '_ 
     }
 }
 
+fn mean(data: &[f32]) -> f32 {
+    let sum = data.iter().sum::<f32>();
+    let count = data.len();
+
+    match count {
+        positive if positive > 0 => sum / count as f32,
+        _ => 0.,
+    }
+}
+
+fn std_deviation(data: &[f32]) -> f32 {
+    let data_mean = mean(data);
+    let count = data.len();
+    if count > 0 {
+        let variance = data
+            .iter()
+            .map(|value| {
+                let diff = data_mean - (*value as f32);
+
+                diff * diff
+            })
+            .sum::<f32>()
+            / count as f32;
+
+        variance.sqrt()
+    } else {
+        0.
+    }
+}
+
 pub struct ChartCalcData {
     density: BTreeMap<R32, R32>,
     angles: BTreeMap<R32, R32>,
     angle_changes: BTreeMap<R32, R32>,
+}
+
+impl ChartCalcData {
+    pub fn new(chart: &Chart) -> Self {
+        let mut chart_data = ChartCalcData {
+            density: BTreeMap::new(),
+            angles: BTreeMap::new(),
+            angle_changes: BTreeMap::new(),
+        };
+        for [a, b] in chart.fruits.array_windows::<2>() {
+            assert_ne!(a.time, b.time);
+            let time_to_hit = b.time - a.time;
+            // https://www.desmos.com/calculator/yt3tru6suf
+            // \frac{1}{1+e^{\frac{v}{100}\left(x-m\right)}}
+            fn density(diff_ms: f32) -> f32 {
+                const V: f32 = 3.0 / 100.;
+                const M: f32 = 166.0;
+                1. / (1. + (diff_ms * V - M * V).exp())
+            }
+
+            let angle = a.angle_to(b, chart.fall_time).to_degrees();
+
+            chart_data
+                .density
+                .insert(R32::new(b.time), R32::new(density(time_to_hit * 1000.)));
+            chart_data
+                .angles
+                .insert(R32::new(b.time), R32::new(angle.abs() / 90.));
+        }
+        for [a, b, c] in chart.fruits.array_windows::<3>() {
+            let angle_a = a.angle_to(b, chart.fall_time).to_degrees();
+            let angle_b = b.angle_to(c, chart.fall_time).to_degrees();
+
+            let angle_change = angle_a.max(angle_b) - angle_a.min(angle_b);
+
+            chart_data
+                .angle_changes
+                .insert(R32::new(b.time), R32::new(angle_change / 180.));
+        }
+        chart_data
+    }
+
+    pub fn avg_density(&self) -> f32 {
+        self.density.values().sum::<R32>().raw() / self.density.len() as f32
+    }
+
+    pub fn avg_angles(&self) -> f32 {
+        self.angles.values().sum::<R32>().raw() / self.angles.len() as f32
+    }
+
+    pub fn avg_angle_changes(&self) -> f32 {
+        self.angle_changes.values().sum::<R32>().raw() / self.angle_changes.len() as f32
+    }
+
+    pub fn star_rating(&self) -> f32 {
+        let density_difficulty = self.avg_density() * 10.;
+        let angle_difficulty = 1. - self.avg_angles();
+        let angle_changes_difficulty = self.avg_angle_changes();
+
+        let density_inconsistency =
+            std_deviation(&self.density.values().map(|f| f.raw()).collect::<Vec<_>>());
+
+        let mut anomalies = self
+            .density
+            .values()
+            .map(|v| v.raw() / self.avg_density())
+            .map(|v| v.max(1.))
+            .collect::<Vec<_>>();
+        anomalies.dedup();
+        let spikiness = anomalies.iter().sum::<f32>() / anomalies.len() as f32;
+
+        let raw_value = (1.
+            + density_difficulty
+                * angle_difficulty
+                * angle_changes_difficulty.powi(2)
+                * density_inconsistency.sqrt()
+                * spikiness.sqrt()
+                * 100.)
+            .powf(1.5)
+            - 1.;
+
+        raw_value
+    }
 }
 
 pub struct SelectScreen {
@@ -89,9 +206,39 @@ pub struct SelectScreen {
 }
 
 impl SelectScreen {
-    pub fn new(_data: SharedGameData) -> Self {
+    pub async fn new(_data: SharedGameData) -> Self {
         let (tx, rx) = flume::unbounded();
         let charts = get_charts();
+
+        // TODO Cache this?
+        let diff_futures = charts
+            .iter()
+            .map(|chart| {
+                chart.difficulties.iter().map(|diff| async {
+                    let beatmap_data =
+                        load_file(&format!("resources/{}/{}.osu", chart.title, diff.name))
+                            .await
+                            .unwrap();
+                    let beatmap_content = std::str::from_utf8(&beatmap_data).unwrap();
+                    let beatmap = osu_parser::load_content(
+                        beatmap_content,
+                        osu_parser::BeatmapParseOptions::default(),
+                    )
+                    .unwrap();
+                    let chart_impl = crate::chart::Chart::convert_from(&beatmap);
+                    (
+                        format!("{}-{}", chart.title, diff.name),
+                        ChartCalcData::new(&chart_impl),
+                    )
+                })
+            })
+            .flatten();
+        let mut diffs = HashMap::new();
+        for diff_future in diff_futures {
+            let (key, value) = diff_future.await;
+            diffs.insert(key, value);
+        }
+
         let charts_raw = charts
             .iter()
             .map(|chart| {
@@ -101,7 +248,13 @@ impl SelectScreen {
                         chart
                             .difficulties
                             .iter()
-                            .map(|diff| diff.name.clone())
+                            .map(|diff| {
+                                format!(
+                                    "{} [{:.2}*]",
+                                    diff.name,
+                                    diffs[&format!("{}-{}", chart.title, diff.name)].star_rating()
+                                )
+                            })
                             .collect::<Vec<_>>(),
                     ),
                 )
@@ -380,44 +533,9 @@ impl Screen for SelectScreen {
                             osu_parser::BeatmapParseOptions::default(),
                         )
                         .unwrap();
-                        let chart = crate::chart::Chart::convert_from(&beatmap);
-
-                        let mut chart_data = ChartCalcData {
-                            density: BTreeMap::new(),
-                            angles: BTreeMap::new(),
-                            angle_changes: BTreeMap::new(),
-                        };
-                        for [a, b] in chart.fruits.array_windows::<2>() {
-                            assert_ne!(a.time, b.time);
-                            let time_to_hit = b.time - a.time;
-                            // https://www.desmos.com/calculator/yt3tru6suf
-                            // \frac{1}{1+e^{\frac{v}{100}\left(x-m\right)}}
-                            fn density(diff_ms: f32) -> f32 {
-                                const V: f32 = 3.0 / 100.;
-                                const M: f32 = 166.0;
-                                1. / (1. + (diff_ms * V - M * V).exp())
-                            }
-
-                            let angle = a.angle_to(b, chart.fall_time).to_degrees();
-
-                            chart_data
-                                .density
-                                .insert(R32::new(b.time), R32::new(density(time_to_hit * 1000.)));
-                            chart_data
-                                .angles
-                                .insert(R32::new(b.time), R32::new(angle.abs() / 90.));
-                        }
-                        for [a, b, c] in chart.fruits.array_windows::<3>() {
-                            let angle_a = a.angle_to(b, chart.fall_time).to_degrees();
-                            let angle_b = b.angle_to(c, chart.fall_time).to_degrees();
-
-                            let angle_change = angle_a.max(angle_b) - angle_a.min(angle_b);
-
-                            chart_data
-                                .angle_changes
-                                .insert(R32::new(b.time), R32::new(angle_change / 180.));
-                        }
-                        self.chart_data = Some(chart_data);
+                        self.chart_data = Some(ChartCalcData::new(
+                            &crate::chart::Chart::convert_from(&beatmap),
+                        ));
                     }
                 }
                 if message.target == self.start.id {
@@ -462,7 +580,14 @@ impl Screen for SelectScreen {
             let max_angle = chart_data.angles.iter().last().unwrap();
             let max_angle_change = chart_data.angles.iter().last().unwrap();
 
-            draw_text("Density", 0., screen_height() - 106., 16., WHITE);
+            let spacing = 100.;
+            draw_text(
+                &format!("Density ({:.2})", chart_data.avg_density()),
+                0.,
+                screen_height() - 106.,
+                16.,
+                WHITE,
+            );
             draw_visualization(
                 0.,
                 screen_height() - 100.,
@@ -471,18 +596,30 @@ impl Screen for SelectScreen {
                 interpolate(max_density.0.raw(), &chart_data.density),
             );
 
-            draw_text("Angles", 55., screen_height() - 106., 16., WHITE);
+            draw_text(
+                &format!("Angles ({:.2})", chart_data.avg_angles()),
+                spacing + 5.,
+                screen_height() - 106.,
+                16.,
+                WHITE,
+            );
             draw_visualization(
-                55.,
+                spacing + 5.,
                 screen_height() - 100.,
                 50.,
                 100.,
                 interpolate(max_angle.0.raw(), &chart_data.angles),
             );
 
-            draw_text("Angles Changes", 110., screen_height() - 106., 16., WHITE);
+            draw_text(
+                &format!("Angle Changes ({:.2})", chart_data.avg_angle_changes()),
+                spacing * 2. + 10.,
+                screen_height() - 106.,
+                16.,
+                WHITE,
+            );
             draw_visualization(
-                110.,
+                spacing * 2. + 10.,
                 screen_height() - 100.,
                 50.,
                 100.,

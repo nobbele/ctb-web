@@ -250,7 +250,7 @@ impl Game {
             screen: if first_time {
                 Box::new(SetupScreen::new())
             } else {
-                Box::new(SelectScreen::new(data.clone()))
+                Box::new(SelectScreen::new(data.clone()).await)
             },
             overlay: None,
             data,
@@ -369,7 +369,14 @@ impl Game {
         for msg in self.game_rx.drain() {
             match msg {
                 GameMessage::ChangeScreen(screen) => self.screen = screen,
-                GameMessage::UpdateMusic { handle, looping: _ } => {
+                GameMessage::UpdateMusic {
+                    mut handle,
+                    looping,
+                } => {
+                    if looping {
+                        handle.settings.loop_behavior =
+                            Some(kira::LoopBehavior { start_position: 0. });
+                    }
                     self.data.state_mut().music.stop(Tween::default()).unwrap();
                     self.data.state_mut().music =
                         self.data.audio.borrow_mut().play(handle).unwrap();

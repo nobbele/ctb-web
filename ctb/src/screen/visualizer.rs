@@ -21,7 +21,9 @@ impl Visualizer {
 impl Screen for Visualizer {
     async fn update(&mut self, data: SharedGameData) {
         if is_key_pressed(KeyCode::Escape) {
-            data.broadcast(GameMessage::change_screen(SelectScreen::new(data.clone())));
+            data.broadcast(GameMessage::change_screen(
+                SelectScreen::new(data.clone()).await,
+            ));
         }
     }
 

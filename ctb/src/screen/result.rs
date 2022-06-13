@@ -42,7 +42,9 @@ impl<R: Ruleset> ResultScreen<R> {
 impl<R: Ruleset> Screen for ResultScreen<R> {
     async fn update(&mut self, data: SharedGameData) {
         if is_key_pressed(KeyCode::Escape) {
-            data.broadcast(GameMessage::change_screen(SelectScreen::new(data.clone())));
+            data.broadcast(GameMessage::change_screen(
+                SelectScreen::new(data.clone()).await,
+            ));
         }
 
         if is_key_pressed(KeyCode::F2) {

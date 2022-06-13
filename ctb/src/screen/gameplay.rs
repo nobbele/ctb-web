@@ -481,7 +481,9 @@ impl Screen for Gameplay<CatchRuleset> {
             self.use_predicted_time = !self.use_predicted_time;
         }
         if is_key_pressed(KeyCode::End) {
-            data.broadcast(GameMessage::change_screen(SelectScreen::new(data.clone())));
+            data.broadcast(GameMessage::change_screen(
+                SelectScreen::new(data.clone()).await,
+            ));
         }
         if is_key_pressed(KeyCode::Escape) {
             self.paused = !self.paused;

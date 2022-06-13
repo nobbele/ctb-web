@@ -75,7 +75,9 @@ impl Screen for SetupScreen {
                     set_value("first_time", false);
                     set_value("binds", key_binds);
                     data.state.borrow_mut().binds = key_binds;
-                    data.broadcast(GameMessage::change_screen(SelectScreen::new(data.clone())));
+                    data.broadcast(GameMessage::change_screen(
+                        SelectScreen::new(data.clone()).await,
+                    ));
                 }
             }
         }
