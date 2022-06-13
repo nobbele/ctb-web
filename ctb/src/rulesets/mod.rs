@@ -2,6 +2,12 @@ use crate::{chart::Chart, score::Judgement};
 
 pub mod catch;
 
+pub enum JudgementResult<H> {
+    None,
+    Hit(H),
+    Miss,
+}
+
 pub trait Ruleset {
     /// Input type for this ruleset.
     type Input: serde::Serialize + for<'a> serde::Deserialize<'a>;
@@ -11,6 +17,9 @@ pub trait Ruleset {
 
     /// Judgement type for this ruleset. An indication of how well an object was hit.
     type Judgement: Judgement;
+
+    /// Judgement type for this ruleset. An indication of how well an object was hit.
+    type HitDetails;
 
     /// Sync frames are used to synchronize replays periodically.
     type SyncFrame: serde::Serialize + for<'a> serde::Deserialize<'a>;
@@ -39,5 +48,5 @@ pub trait Ruleset {
         time: f32,
         object: Self::Object,
         chart: &Chart,
-    ) -> Option<Self::Judgement>;
+    ) -> JudgementResult<(Self::Judgement, Self::HitDetails)>;
 }

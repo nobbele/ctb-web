@@ -13,7 +13,12 @@ pub fn from_hit_sound_bits(bits: u8) -> Additions {
     }
 }
 
-pub fn from_hitobject(hitobject: &osu_types::HitObject, small: bool, color: Color) -> Fruit {
+pub fn from_hitobject(
+    hitobject: &osu_types::HitObject,
+    small: bool,
+    color: Color,
+    plate_reset: bool,
+) -> Fruit {
     Fruit {
         position: hitobject.position.0 as f32,
         time: hitobject.time as f32 / 1000.,
@@ -24,6 +29,7 @@ pub fn from_hitobject(hitobject: &osu_types::HitObject, small: bool, color: Colo
             _ => hitobject.hit_sound,
         }),
         color,
+        plate_reset,
     }
 }
 
@@ -83,6 +89,7 @@ impl ConvertFrom<osu_parser::Beatmap> for Chart {
                     b: color.b as f32 / u8::MAX as f32,
                     a: 1.0,
                 },
+                !is_first && hitobject.new_combo,
             );
             fruits.push(fruit);
 
@@ -133,6 +140,7 @@ impl ConvertFrom<osu_parser::Beatmap> for Chart {
                         time: fruit.time + sec,
                         hyper: None,
                         small: true,
+                        plate_reset: false,
                         ..fruit
                     })
                 }
@@ -141,6 +149,7 @@ impl ConvertFrom<osu_parser::Beatmap> for Chart {
                     time: fruit.time + slide_length_secs,
                     hyper: None,
                     small: false,
+                    plate_reset: false,
                     ..fruit
                 })
             }

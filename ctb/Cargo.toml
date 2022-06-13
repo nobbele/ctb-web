@@ -21,7 +21,7 @@ mint = "0.5.9"
 thiserror = "1.0.30"
 uuid = { version = "0.8.2", default-features = false, features = ["serde"] }
 egui-macroquad = "0.11.0"
-noisy_float = "0.2.0"
+noisy_float = { version = "0.2.0", features = ["serde"] }
 rmp-serde = "1.1.0"
 time = { version = "0.3.9", features = ["formatting"] }
 quad-net = "0.1.1"

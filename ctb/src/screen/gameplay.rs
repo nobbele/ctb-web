@@ -13,14 +13,14 @@ use crate::{
     math,
     rulesets::{
         catch::{catcher_speed, CatchInput, CatchRuleset},
-        Ruleset,
+        JudgementResult, Ruleset,
     },
     score::{Judgement, ScoreRecorder},
 };
 use async_trait::async_trait;
 use instant::SystemTime;
 use kira::tween::Tween;
-use macroquad::prelude::*;
+use macroquad::{prelude::*, rand::rand};
 use num_format::{Locale, ToFormattedString};
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -81,6 +81,18 @@ pub enum ReplayType {
     },
 }
 
+pub struct DisposedFruit {
+    gravity: f32,
+    x_speed: f32,
+    color: Color,
+}
+
+pub struct DisposedFruits {
+    position: f32,
+    fruits: Vec<DisposedFruit>,
+    time_since_dispose: f32,
+}
+
 pub struct Gameplay<R: Ruleset> {
     chart_name: String,
     recorder: ScoreRecorder<R::Judgement>,
@@ -97,6 +109,8 @@ pub struct Gameplay<R: Ruleset> {
 
     chart: Frozen<Chart>,
     queued_fruits: Vec<usize>,
+    plate: Vec<(f32, Color)>,
+    disposed_fruits: Vec<DisposedFruits>,
     time_countdown: f32,
     fade_out: f32,
     started: bool,
@@ -178,6 +192,8 @@ impl Gameplay<CatchRuleset> {
             bpm: 180.,
             fall_multiplier: 1.,
             volume: 1.,
+            plate: vec![],
+            disposed_fruits: vec![],
         }
     }
 
@@ -205,6 +221,31 @@ impl Gameplay<CatchRuleset> {
     fn playfield_width(&self) -> f32 {
         512.
     }
+
+    fn drawable_fruit_color(&self, color: Color) -> Color {
+        Color {
+            r: math::lerp(color.r, 1., 0.75),
+            g: math::lerp(color.g, 1., 0.75),
+            b: math::lerp(color.b, 1., 0.75),
+            a: math::lerp(color.a, 1., 0.75),
+        }
+    }
+
+    fn dispose_plate(&mut self) {
+        self.disposed_fruits.push(DisposedFruits {
+            position: self.ruleset.position,
+            fruits: self
+                .plate
+                .drain(..self.plate.len() - 1)
+                .map(|(off, color)| DisposedFruit {
+                    gravity: math::remap(0., u32::MAX as f32, 900., 1500., rand() as f32),
+                    x_speed: off * 100.,
+                    color,
+                })
+                .collect(),
+            time_since_dispose: 0.,
+        });
+    }
 }
 
 #[async_trait(?Send)]
@@ -228,7 +269,13 @@ impl Screen for Gameplay<CatchRuleset> {
             self.predicted_time = data.predicted_time_with_offset();
         }
 
+        let mut should_dispose_plate = false;
+
         if !self.paused {
+            for disposed_fruits in &mut self.disposed_fruits {
+                disposed_fruits.time_since_dispose += get_frame_time();
+            }
+
             for event in self.chart.events[self.event_idx..]
                 .iter()
                 .filter(|event| self.time >= event.time)
@@ -252,7 +299,7 @@ impl Screen for Gameplay<CatchRuleset> {
             let audio_dt = self.time - self.prev_time;
             for (idx, &fruit_idx) in self.queued_fruits.iter().enumerate() {
                 let fruit = self.chart.fruits[fruit_idx];
-                if let Some(judgement) =
+                if let JudgementResult::Hit((judgement, details)) =
                     self.ruleset
                         .test_hitobject(audio_dt, self.time, fruit, &self.chart)
                 {
@@ -310,6 +357,12 @@ impl Screen for Gameplay<CatchRuleset> {
                             if fruit.additions.clap {
                                 play_sound("Clap").await;
                             }
+
+                            if fruit.plate_reset {
+                                should_dispose_plate = true;
+                            }
+
+                            self.plate.push((details.off, fruit.color));
                         }
                     } else if self.recorder.combo >= 8 {
                         data.audio
@@ -378,6 +431,14 @@ impl Screen for Gameplay<CatchRuleset> {
             for idx in defer_delete.into_iter().rev() {
                 self.queued_fruits.remove(idx);
             }
+        }
+
+        if self.plate.len() >= 16 {
+            should_dispose_plate = true;
+        }
+
+        if should_dispose_plate {
+            self.dispose_plate();
         }
 
         if self.queued_fruits.is_empty() && !self.ended {
@@ -475,27 +536,23 @@ impl Screen for Gameplay<CatchRuleset> {
                 },
                 fruit.time,
             );
-            if y + self.chart.fruit_radius * self.scale() <= 0. {
-                // queued_fruits are in spawn/hit order currently.
-                // I may change it in the future.
-                // but for now this exists to improve performance.
-                break;
-            }
 
             let mut radius = self.chart.fruit_radius * self.scale();
             if fruit.small {
                 radius /= 2.0;
             }
 
+            if y + radius <= 0. {
+                // queued_fruits are in spawn/hit order currently.
+                // I may change it in the future.
+                // but for now this exists to improve performance.
+                break;
+            }
+
             let color = if fruit.hyper.is_some() {
                 RED
             } else {
-                Color {
-                    r: math::lerp(fruit.color.r, 1., 0.75),
-                    g: math::lerp(fruit.color.g, 1., 0.75),
-                    b: math::lerp(fruit.color.b, 1., 0.75),
-                    a: math::lerp(fruit.color.a, 1., 0.75),
-                }
+                self.drawable_fruit_color(fruit.color)
             };
             draw_texture_ex(
                 data.fruit,
@@ -547,22 +604,56 @@ impl Screen for Gameplay<CatchRuleset> {
             );
         }
 
-        let drawable_catcher_width = self.chart.catcher_width * self.scale();
+        let catcher_position = self.playfield_to_screen_x(self.ruleset.position)
+            - self.chart.catcher_width * self.scale() / 2.;
+
         let catcher_sprite_ratio = data.catcher.width() / data.catcher.height();
+        let drawable_catcher_width = self.chart.catcher_width * self.scale();
+        let drawable_catcher_height = drawable_catcher_width / catcher_sprite_ratio;
+
+        let radius = self.chart.fruit_radius * self.scale();
+        let plate_y = self.catcher_y() - drawable_catcher_height / 2. + radius;
+        for (idx, &(off, color)) in self.plate.iter().enumerate() {
+            draw_texture_ex(
+                data.fruit,
+                self.playfield_to_screen_x(self.ruleset.position) - radius
+                    + drawable_catcher_width * off / 2.,
+                plate_y - (radius * 2.) * 0.1 * idx as f32,
+                self.drawable_fruit_color(color),
+                DrawTextureParams {
+                    dest_size: Some(vec2(radius * 2., radius * 2.)),
+                    ..Default::default()
+                },
+            );
+        }
+
         draw_texture_ex(
             data.catcher,
-            self.playfield_to_screen_x(self.ruleset.position)
-                - self.chart.catcher_width * self.scale() / 2.,
+            catcher_position,
             self.catcher_y(),
             WHITE,
             DrawTextureParams {
-                dest_size: Some(vec2(
-                    drawable_catcher_width,
-                    drawable_catcher_width / catcher_sprite_ratio,
-                )),
+                dest_size: Some(vec2(drawable_catcher_width, drawable_catcher_height)),
                 ..Default::default()
             },
         );
+
+        for disposed_fruits in &self.disposed_fruits {
+            for fruit in &disposed_fruits.fruits {
+                let y = plate_y + fruit.gravity * disposed_fruits.time_since_dispose.powi(2);
+                let x_offset = fruit.x_speed * disposed_fruits.time_since_dispose;
+                draw_texture_ex(
+                    data.fruit,
+                    self.playfield_to_screen_x(disposed_fruits.position) - radius + x_offset,
+                    y,
+                    self.drawable_fruit_color(fruit.color),
+                    DrawTextureParams {
+                        dest_size: Some(vec2(radius * 2., radius * 2.)),
+                        ..Default::default()
+                    },
+                );
+            }
+        }
 
         draw_text(
             &format!("{:.2}%", self.recorder.accuracy * 100.),

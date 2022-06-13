@@ -15,6 +15,7 @@ pub struct Fruit {
     pub small: bool,
     pub additions: Additions,
     pub color: Color,
+    pub plate_reset: bool,
 }
 
 impl Fruit {
