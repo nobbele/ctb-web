@@ -1,7 +1,7 @@
-use crate::rulesets::{catch::CatchScore, JudgementResult};
+use crate::rulesets::catch::CatchScore;
 #[cfg(not(target_family = "wasm"))]
 use {
-    crate::rulesets::catch::CatchJudgement,
+    crate::rulesets::{catch::CatchJudgement, JudgementResult},
     gluesql::prelude::{Glue, Payload, SledStorage, Value},
     std::{collections::HashMap, ops::Deref},
 };
