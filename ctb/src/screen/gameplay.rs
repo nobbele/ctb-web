@@ -319,6 +319,7 @@ impl Screen for Gameplay<CatchRuleset> {
                                     format!("resources/{}/HitSounds/{}", self.chart_name, hs_type);
 
                                 // If only you could move some values and borrow others..
+                                // TODO hitsounds should be pre-loaded before map even begins so we don't have to do this.
                                 data.promises().spawn_detached({
                                     let data = data.clone();
                                     let base_hs_path = base_hs_path.clone();
