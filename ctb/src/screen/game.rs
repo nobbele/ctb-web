@@ -269,8 +269,6 @@ impl Game {
     }
 
     pub async fn update(&mut self) {
-        self.data.promises().poll();
-
         let time = self.data.state().music.position() as f32;
         let playing = matches!(
             self.data.state().music.state(),
@@ -365,6 +363,8 @@ impl Game {
         }
         self.screen.update(self.data.clone()).await;
         self.data.locked_input.set(false);
+
+        self.data.promises().poll();
 
         for msg in self.game_rx.drain() {
             match msg {

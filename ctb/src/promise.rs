@@ -31,8 +31,13 @@ enum FutureOrValue {
     Value(Box<dyn Any>),
 }
 
+pub struct PromiseFuture {
+    futval: FutureOrValue,
+    detached: bool,
+}
+
 pub struct PromiseExecutor {
-    promises: SlotMap<slotmap::DefaultKey, FutureOrValue>,
+    promises: SlotMap<slotmap::DefaultKey, PromiseFuture>,
 }
 
 impl PromiseExecutor {
@@ -46,22 +51,44 @@ impl PromiseExecutor {
     where
         F: Future<Output = T> + 'static,
     {
-        let key = self.promises.insert(FutureOrValue::Future(Box::pin(async {
-            Box::new(fut.await) as Box<dyn Any>
-        })));
         Promise {
-            cancelled_or_finished: Cell::new(true),
-            id: key,
+            cancelled_or_finished: Cell::new(false),
+            id: self.insert_promise(fut, false),
             _phantom: PhantomData,
         }
     }
 
+    pub fn spawn_detached<T: Send + 'static, F>(&mut self, fut: F)
+    where
+        F: Future<Output = T> + 'static,
+    {
+        self.insert_promise(fut, true);
+    }
+
+    pub fn insert_promise<T: Send + 'static, F>(
+        &mut self,
+        fut: F,
+        detached: bool,
+    ) -> slotmap::DefaultKey
+    where
+        F: Future<Output = T> + 'static,
+    {
+        self.promises.insert(PromiseFuture {
+            futval: FutureOrValue::Future(Box::pin(async { Box::new(fut.await) as Box<dyn Any> })),
+            detached,
+        })
+    }
+
     pub fn try_get<T: 'static>(&mut self, promise: &Promise<T>) -> Option<T> {
-        match &self.promises[promise.id] {
+        if promise.cancelled_or_finished.get() {
+            panic!("Can't poll an already finished Promise.");
+        }
+
+        match self.promises[promise.id].futval {
             FutureOrValue::Future(_) => None,
             FutureOrValue::Value(_) => {
                 promise.cancelled_or_finished.set(true);
-                match self.promises.remove(promise.id).unwrap() {
+                match self.promises.remove(promise.id).unwrap().futval {
                     FutureOrValue::Future(_) => unreachable!(),
                     FutureOrValue::Value(v) => Some(*v.downcast().unwrap()),
                 }
@@ -70,22 +97,35 @@ impl PromiseExecutor {
     }
 
     pub fn poll(&mut self) {
+        let mut unretrieved_values = 0;
         let keys = self.promises.keys().collect::<Vec<_>>();
         for key in keys {
-            let promise = &mut self.promises[key];
-            match promise {
+            match &mut self.promises[key].futval {
                 FutureOrValue::Future(f) => {
                     let waker = null_waker();
                     let mut cx = std::task::Context::from_waker(&waker);
                     match std::future::Future::poll(f.as_mut(), &mut cx) {
                         std::task::Poll::Ready(v) => {
-                            self.promises[key] = FutureOrValue::Value(v);
+                            if self.promises[key].detached {
+                                self.promises.remove(key).unwrap();
+                            } else {
+                                self.promises[key].futval = FutureOrValue::Value(v);
+                            }
                         }
                         std::task::Poll::Pending => {}
                     }
                 }
-                FutureOrValue::Value(_) => {}
+                FutureOrValue::Value(_) => {
+                    unretrieved_values += 1;
+                }
             }
+        }
+
+        if unretrieved_values >= 10 {
+            println!(
+                "Too many unretrieved values ({}). Something must've gone wrong somewhere..",
+                unretrieved_values
+            );
         }
     }
 

@@ -318,41 +318,46 @@ impl Screen for Gameplay<CatchRuleset> {
                                 let base_hs_path =
                                     format!("resources/{}/HitSounds/{}", self.chart_name, hs_type);
 
-                                let play_sound = |name: &'static str| {
+                                // If only you could move some values and borrow others..
+                                data.promises().spawn_detached({
                                     let data = data.clone();
-                                    let base_hs_path = &base_hs_path;
+                                    let base_hs_path = base_hs_path.clone();
                                     let volume = self.volume;
                                     async move {
-                                        let hs_data = data
-                                            .audio_cache
-                                            .get_sound(
-                                                &format!("{}/{}.wav", base_hs_path, name),
-                                                data.hitsound_track.id(),
-                                            )
-                                            .await
-                                            .unwrap_or(data.hit_normal.clone());
+                                        let data = &data;
+                                        let base_hs_path = &base_hs_path;
+                                        let play_sound = |name: &'static str| async move {
+                                            let hs_data = data
+                                                .audio_cache
+                                                .get_sound(
+                                                    &format!("{}/{}.wav", base_hs_path, name),
+                                                    data.hitsound_track.id(),
+                                                )
+                                                .await
+                                                .unwrap_or(data.hit_normal.clone());
 
-                                        let mut hitsound =
-                                            data.audio.borrow_mut().play(hs_data).unwrap();
-                                        hitsound
-                                            .set_panning(panning as f64, Tween::default())
-                                            .unwrap();
-                                        hitsound
-                                            .set_volume(volume as f64, Tween::default())
-                                            .unwrap();
+                                            let mut hitsound =
+                                                data.audio.borrow_mut().play(hs_data).unwrap();
+                                            hitsound
+                                                .set_panning(panning as f64, Tween::default())
+                                                .unwrap();
+                                            hitsound
+                                                .set_volume(volume as f64, Tween::default())
+                                                .unwrap();
+                                        };
+
+                                        play_sound("Hit").await;
+                                        if fruit.additions.whistle {
+                                            play_sound("Whistle").await;
+                                        }
+                                        if fruit.additions.finish {
+                                            play_sound("Finish").await;
+                                        }
+                                        if fruit.additions.clap {
+                                            play_sound("Clap").await;
+                                        }
                                     }
-                                };
-
-                                play_sound("Hit").await;
-                                if fruit.additions.whistle {
-                                    play_sound("Whistle").await;
-                                }
-                                if fruit.additions.finish {
-                                    play_sound("Finish").await;
-                                }
-                                if fruit.additions.clap {
-                                    play_sound("Clap").await;
-                                }
+                                });
 
                                 if fruit.plate_reset {
                                     should_dispose_plate = true;
