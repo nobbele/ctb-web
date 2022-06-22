@@ -1,5 +1,8 @@
 use super::Overlay;
-use crate::screen::game::{GameMessage, SharedGameData};
+use crate::{
+    config,
+    screen::game::{GameMessage, SharedGameData},
+};
 use async_trait::async_trait;
 use egui_macroquad::egui;
 use macroquad::prelude::*;
@@ -9,6 +12,9 @@ pub struct Settings {
     hitsound_volume: f32,
     panning: (f32, f32),
     offset_ms: i32,
+
+    max_stack: u32,
+    playfield_size: u32,
 }
 
 impl Settings {
@@ -18,6 +24,8 @@ impl Settings {
             panning: data.panning(),
             hitsound_volume: data.hitsound_volume.get(),
             offset_ms: (data.offset.get() * 1000.) as i32,
+            max_stack: data.max_stack.get(),
+            playfield_size: (data.playfield_size.get() * 100.) as u32,
         }
     }
 }
@@ -85,15 +93,41 @@ impl Overlay for Settings {
                         }
                     });
 
-                    ui.label("Offset");
+                    ui.label("General");
+
                     let offset = ui.add(
                         egui::Slider::new(&mut self.offset_ms, -100..=100)
                             .show_value(true)
                             .suffix(" ms")
+                            .text("Offset")
                             .show_value(true),
                     );
                     if offset.changed() {
                         data.broadcast(GameMessage::SetOffset(self.offset_ms as f32 / 1000.));
+                    }
+
+                    let playfield_size_slider = ui.add(
+                        egui::Slider::new(&mut self.playfield_size, 10..=100)
+                            .clamp_to_range(true)
+                            .suffix("%")
+                            .text("Playfield Width")
+                            .show_value(true),
+                    );
+                    if playfield_size_slider.changed() {
+                        let playfield_size = self.playfield_size as f32 / 100.;
+                        data.playfield_size.set(playfield_size);
+                        config::set_value("playfield_size", playfield_size);
+                    }
+
+                    let max_stack_slider = ui.add(
+                        egui::Slider::new(&mut self.max_stack, 4..=32)
+                            .clamp_to_range(true)
+                            .text("Max Stack")
+                            .show_value(true),
+                    );
+                    if max_stack_slider.changed() {
+                        data.max_stack.set(self.max_stack);
+                        config::set_value("max_stack", self.max_stack);
                     }
                 });
         });

@@ -178,6 +178,10 @@ pub struct GameData {
 
     locked_input: Cell<bool>,
 
+    /// Playfield size as a percent of the screen width \[0; 1\].
+    playfield_size: Cell<f32>,
+    max_stack: Cell<u32>,
+
     state: RefCell<GameState>,
     promises: RefCell<PromiseExecutor>,
     packet_tx: flume::Sender<ClientPacket>,

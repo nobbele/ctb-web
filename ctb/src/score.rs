@@ -1,24 +1,18 @@
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, hash::Hash};
 
+use crate::rulesets::JudgementResult;
+
 pub trait Judgement: Hash + Eq + Clone + PartialOrd + Ord {
     fn hit(inaccuracy: f32) -> Self;
-    fn miss() -> Self;
     fn weight(&self) -> f32;
     fn all() -> Vec<Self>;
-
-    fn is_miss(&self) -> bool {
-        self == &Self::miss()
-    }
-    fn is_hit(&self) -> bool {
-        self != &Self::miss()
-    }
 }
 
-pub fn accuracy<J: Judgement>(judgements: &BTreeMap<J, u32>) -> f32 {
+pub fn accuracy<J: Judgement>(judgements: &BTreeMap<JudgementResult<J>, u32>) -> f32 {
     let weight_sum = judgements
         .iter()
-        .map(|(judgement, &count)| judgement.weight() * count as f32)
+        .map(|(judgement, &count)| if let JudgementResult::Hit(h) = judgement { h.weight() } else { 0. } * count as f32)
         .sum::<f32>();
     let max_weight = judgements.iter().map(|(_, &count)| count).sum::<u32>() as f32;
     weight_sum / max_weight
@@ -29,7 +23,7 @@ pub struct Score<J: Judgement> {
     pub username: Option<String>,
     pub diff_id: u32,
     pub top_combo: u32,
-    pub judgements: BTreeMap<J, u32>,
+    pub judgements: BTreeMap<JudgementResult<J>, u32>,
     pub score: u32,
     pub passed: bool,
 }
@@ -39,7 +33,7 @@ pub struct ScoreRecorder<J: Judgement> {
     pub top_combo: u32,
     pub max_combo: u32,
 
-    pub judgements: BTreeMap<J, u32>,
+    pub judgements: BTreeMap<JudgementResult<J>, u32>,
     pub weight_sum: f32,
 
     /// This needs to be tracked separately due to floating point imprecision.
@@ -66,7 +60,8 @@ impl<J: Judgement> ScoreRecorder<J> {
             max_combo,
             judgements: J::all()
                 .into_iter()
-                .map(|judgement| (judgement, 0))
+                .map(|judgement| (JudgementResult::Hit(judgement), 0))
+                .chain(std::iter::once((JudgementResult::Miss, 0)))
                 .collect(),
             weight_sum: 0.,
             internal_score: 0.,
@@ -77,40 +72,43 @@ impl<J: Judgement> ScoreRecorder<J> {
         }
     }
 
-    pub fn register_judgement(&mut self, judgement: J) {
-        if !judgement.is_miss() {
-            self.combo += 1;
-            self.top_combo = self.top_combo.max(self.combo);
+    pub fn register_judgement(&mut self, judgement: JudgementResult<J>) {
+        match judgement {
+            JudgementResult::Hit(_) => {
+                self.combo += 1;
+                self.top_combo = self.top_combo.max(self.combo);
 
-            self.internal_score += self.combo as f64 / self.max_combo as f64;
-            self.score = (self.internal_score * 1_000_000. * 2. / (self.max_combo as f64 + 1.))
-                .round() as u32;
-            self.chain_miss_count = 0;
+                self.internal_score += self.combo as f64 / self.max_combo as f64;
+                self.score = (self.internal_score * 1_000_000. * 2. / (self.max_combo as f64 + 1.))
+                    .round() as u32;
+                self.chain_miss_count = 0;
 
-            self.hp += (self.combo as f32 / self.max_combo as f32) * 0.1;
-            self.hp = self.hp.min(1.0);
-        } else {
-            self.combo = 0;
+                self.hp += (self.combo as f32 / self.max_combo as f32) * 0.1;
+                self.hp = self.hp.min(1.0);
+            }
+            JudgementResult::Miss => {
+                self.combo = 0;
 
-            #[allow(clippy::excessive_precision)]
-            let hp_drain = polynomial(
-                self.chain_miss_count as f32,
-                &[
-                    1.0029920966561545e+000,
-                    7.4349034374388925e+000,
-                    -9.1951466248253642e+000,
-                    4.8111412580746844e+000,
-                    -1.2397067078689683e+000,
-                    1.7714300116489434e-001,
-                    -1.4390229652509492e-002,
-                    6.2392424752562498e-004,
-                    -1.1231385529709802e-005,
-                ],
-            ) / 40.;
-            self.hp -= hp_drain;
-            self.hp = self.hp.max(0.);
+                #[allow(clippy::excessive_precision)]
+                let hp_drain = polynomial(
+                    self.chain_miss_count as f32,
+                    &[
+                        1.0029920966561545e+000,
+                        7.4349034374388925e+000,
+                        -9.1951466248253642e+000,
+                        4.8111412580746844e+000,
+                        -1.2397067078689683e+000,
+                        1.7714300116489434e-001,
+                        -1.4390229652509492e-002,
+                        6.2392424752562498e-004,
+                        -1.1231385529709802e-005,
+                    ],
+                ) / 40.;
+                self.hp -= hp_drain;
+                self.hp = self.hp.max(0.);
 
-            self.chain_miss_count += 1;
+                self.chain_miss_count += 1;
+            }
         }
 
         *self.judgements.get_mut(&judgement).unwrap() += 1;
@@ -136,7 +134,7 @@ fn test_score_recorder_limits() {
         dbg!(max_combo);
         let mut recorder = ScoreRecorder::new(max_combo);
         for _ in 0..max_combo {
-            recorder.register_judgement(CatchJudgement::Perfect);
+            recorder.register_judgement(JudgementResult::Hit(CatchJudgement::Perfect));
         }
         assert_eq!(recorder.score, 1_000_000);
     }
@@ -148,27 +146,27 @@ fn test_hp() {
     let mut recorder = ScoreRecorder::new(100);
     assert_eq!(recorder.hp, 1.0);
     for _ in 0..10 {
-        recorder.register_judgement(CatchJudgement::Perfect);
+        recorder.register_judgement(JudgementResult::Hit(CatchJudgement::Perfect));
     }
     assert_eq!(recorder.hp, 1.0);
-    recorder.register_judgement(CatchJudgement::Miss);
+    recorder.register_judgement(JudgementResult::Miss);
     assert_eq!(recorder.hp, 0.9749252);
     for _ in 0..10 {
-        recorder.register_judgement(CatchJudgement::Perfect);
+        recorder.register_judgement(JudgementResult::Hit(CatchJudgement::Perfect));
     }
     assert_eq!(recorder.hp, 1.0);
     for _ in 0..3 {
-        recorder.register_judgement(CatchJudgement::Miss);
+        recorder.register_judgement(JudgementResult::Miss);
     }
     assert_eq!(recorder.hp, 0.8362208);
-    recorder.register_judgement(CatchJudgement::Perfect);
+    recorder.register_judgement(JudgementResult::Hit(CatchJudgement::Perfect));
     for _ in 0..6 {
-        recorder.register_judgement(CatchJudgement::Miss);
+        recorder.register_judgement(JudgementResult::Miss);
     }
     assert_eq!(recorder.hp, 0.22481588);
-    recorder.register_judgement(CatchJudgement::Perfect);
+    recorder.register_judgement(JudgementResult::Hit(CatchJudgement::Perfect));
     for _ in 0..12 {
-        recorder.register_judgement(CatchJudgement::Miss);
+        recorder.register_judgement(JudgementResult::Miss);
     }
     assert_eq!(recorder.hp, 0.0);
 }

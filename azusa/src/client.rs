@@ -2,7 +2,10 @@ use crate::app::{App, Target};
 use ctb::{
     azusa::{ClientPacket, ServerPacket},
     chat::{ChatMessage, ChatMessagePacket},
-    rulesets::catch::{CatchJudgement, CatchScore},
+    rulesets::{
+        catch::{CatchJudgement, CatchScore},
+        JudgementResult,
+    },
 };
 use sqlx::Row;
 use std::{collections::BTreeMap, time::Instant};
@@ -67,8 +70,8 @@ impl Client {
                 sqlx::query("INSERT INTO scores(user_id, diff_id, hit_count, miss_count, score, top_combo) VALUES ($1, $2, $3, $4, $5, $6)")
                 .bind(self.user_id)
                 .bind(score.diff_id)
-                .bind(score.judgements[&CatchJudgement::Perfect])
-                .bind(score.judgements[&CatchJudgement::Miss])
+                .bind(score.judgements[&JudgementResult::Hit(CatchJudgement::Perfect)])
+                .bind(score.judgements[&JudgementResult::Miss])
                 .bind(score.score)
                 .bind(score.top_combo).execute(&self.app.pool).await.unwrap();
             }
@@ -97,9 +100,12 @@ impl Client {
                         passed: true,
                         judgements: {
                             let mut judgements = BTreeMap::new();
+                            judgements.insert(
+                                JudgementResult::Hit(CatchJudgement::Perfect),
+                                hit_count.try_into().unwrap(),
+                            );
                             judgements
-                                .insert(CatchJudgement::Perfect, hit_count.try_into().unwrap());
-                            judgements.insert(CatchJudgement::Miss, miss_count.try_into().unwrap());
+                                .insert(JudgementResult::Miss, miss_count.try_into().unwrap());
                             judgements
                         },
                     }

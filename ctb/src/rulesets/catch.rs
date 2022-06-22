@@ -1,4 +1,4 @@
-use super::Ruleset;
+use super::{JudgementResult, Ruleset};
 use crate::{
     chart::{Chart, Fruit},
     score::{Judgement, Score, ScoreRecorder},
@@ -10,7 +10,11 @@ use macroquad::prelude::*;
 )]
 pub enum CatchJudgement {
     Perfect,
-    Miss,
+}
+
+pub struct CatchHitDetails {
+    /// How far from the center it was hit \[-1; 1\].
+    pub off: f32,
 }
 
 impl Judgement for CatchJudgement {
@@ -19,19 +23,12 @@ impl Judgement for CatchJudgement {
         Self::Perfect
     }
 
-    fn miss() -> Self {
-        Self::Miss
-    }
-
     fn weight(&self) -> f32 {
-        match self {
-            CatchJudgement::Perfect => 1.0,
-            CatchJudgement::Miss => 0.0,
-        }
+        1.0
     }
 
     fn all() -> Vec<Self> {
-        vec![CatchJudgement::Perfect, CatchJudgement::Miss]
+        vec![CatchJudgement::Perfect]
     }
 }
 
@@ -93,6 +90,7 @@ impl Ruleset for CatchRuleset {
     type Input = CatchInput;
     type Object = Fruit;
     type Judgement = CatchJudgement;
+    type HitDetails = CatchHitDetails;
     type SyncFrame = CatchSyncFrame;
 
     fn update(&mut self, dt: f32, input: Self::Input, objects: &[Self::Object]) {
@@ -128,21 +126,25 @@ impl Ruleset for CatchRuleset {
         time: f32,
         object: Self::Object,
         chart: &Chart,
-    ) -> Option<Self::Judgement> {
+    ) -> Option<JudgementResult<(Self::Judgement, Self::HitDetails)>> {
         let catcher_height = screen_height() - 148.;
         let current_height =
             Self::fruit_height_at(time, object.time, chart.fall_time, catcher_height);
         let prev_height =
             Self::fruit_height_at(time - dt, object.time, chart.fall_time, catcher_height);
-        let distance = (object.position - self.position).abs();
+        let distance = object.position - self.position;
+        let off = distance / chart.catcher_width;
 
-        if distance <= chart.catcher_width {
+        if off.abs() <= 1. {
             if current_height >= catcher_height && prev_height <= catcher_height {
-                return Some(CatchJudgement::Perfect);
+                return Some(JudgementResult::Hit((
+                    CatchJudgement::Perfect,
+                    CatchHitDetails { off },
+                )));
             }
 
             if current_height >= screen_height() {
-                return Some(CatchJudgement::Miss);
+                return Some(JudgementResult::Miss);
             }
         }
 

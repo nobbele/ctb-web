@@ -35,6 +35,7 @@ pub fn remap(in_min: f32, in_max: f32, out_min: f32, out_max: f32, value: f32) -
     lerp(out_min, out_max, inv_lerp(in_min, in_max, value))
 }
 
+/// Same as `remap` but clamps the value between `out_min` and `out_max`.
 pub fn clamped_remap(in_min: f32, in_max: f32, out_min: f32, out_max: f32, value: f32) -> f32 {
     lerp(out_min, out_max, inv_lerp(in_min, in_max, value))
         .clamp(out_min.min(out_max), out_max.max(out_min))
