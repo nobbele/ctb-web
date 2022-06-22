@@ -25,6 +25,7 @@ noisy_float = { version = "0.2.0", features = ["serde"] }
 rmp-serde = "1.1.0"
 time = { version = "0.3.9", features = ["formatting"] }
 quad-net = "0.1.1"
+aether-log = { path = "../../aether-log" }
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 gluesql = { version = "0.10.2", default-features = false, features = ["sled-storage"] }

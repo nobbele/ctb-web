@@ -4,7 +4,6 @@ use crate::{
     chat::Chat,
     config::{self, KeyBinds},
     leaderboard::Leaderboard,
-    log::LogEndpoint,
     promise::PromiseExecutor,
 };
 use async_trait::async_trait;
@@ -164,10 +163,6 @@ pub struct GameData {
     hitsound_volume: Cell<f32>,
     panning: Cell<(f32, f32)>,
     offset: Cell<f32>,
-
-    pub general: LogEndpoint,
-    pub network: LogEndpoint,
-    pub audio_performance: LogEndpoint,
 
     pub audio_cache: Cache<StaticSoundData>,
     pub image_cache: Cache<Texture2D>,

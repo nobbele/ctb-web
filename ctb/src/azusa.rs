@@ -1,9 +1,8 @@
-use crate::log_to;
-use crate::rulesets::catch::CatchScore;
-use crate::screen::game::SharedGameData;
-
 use crate::chat::ChatMessagePacket;
+use crate::rulesets::catch::CatchScore;
 use crate::web_socket::{ConnectionStatus, WebSocket};
+use crate::LogType;
+use aether::log;
 use macroquad::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -37,22 +36,17 @@ pub struct Azusa {
     connected: bool,
     logging_in: bool,
 
-    data: SharedGameData,
     token: uuid::Uuid,
 }
 
 impl Azusa {
-    pub async fn new(data: SharedGameData, token: uuid::Uuid) -> Self {
-        let ws = WebSocket::new(
-            data.clone(),
-            vec!["ws://127.0.0.1:3012", "ws://azusa.nobbele.dev:3012"],
-        );
+    pub async fn new(token: uuid::Uuid) -> Self {
+        let ws = WebSocket::new(vec!["ws://127.0.0.1:3012", "ws://azusa.nobbele.dev:3012"]);
         Azusa {
             ws,
             connected: false,
             logging_in: false,
             token,
-            data,
         }
     }
 
@@ -69,19 +63,19 @@ impl Azusa {
         self.ws
             .poll()
             .unwrap_or_else(|e| {
-                log_to!(self.data.network, "{}", e);
+                log!(LogType::Network, "{}", e);
                 vec![]
             })
             .iter()
             .map(|data| bincode::deserialize(data).unwrap())
             .inspect(|packet: &ServerPacket| {
-                log_to!(self.data.network, "Got packet: '{:?}'", packet);
+                log!(LogType::Network, "Got packet: '{:?}'", packet);
             })
             .collect()
     }
 
     pub fn set_connected(&mut self, status: bool) {
-        log_to!(self.data.network, "Azusa connected status: {}", status);
+        log!(LogType::Network, "Azusa connected status: {}", status);
         self.connected = status;
         self.logging_in = false;
     }
@@ -91,7 +85,7 @@ impl Azusa {
     }
 
     pub fn send(&self, message: &ClientPacket) {
-        log_to!(self.data.network, "Sending packet: {:?}", message);
+        log!(LogType::Network, "Sending packet: {:?}", message);
         self.ws.send(bincode::serialize(message).unwrap());
     }
 }

@@ -1,4 +1,6 @@
-use crate::{log_to, screen::game::SharedGameData};
+use aether::log;
+
+use crate::LogType;
 
 use super::{ConnectionStatus, WebSocketInterface};
 
@@ -43,8 +45,6 @@ impl qws::Handler for Client {
 }
 
 pub struct WebSocket {
-    data: SharedGameData,
-
     sender: Option<qws::Sender>,
     tx: flume::Sender<Event>,
     rx: flume::Receiver<Event>,
@@ -54,11 +54,10 @@ pub struct WebSocket {
 }
 
 impl WebSocketInterface for WebSocket {
-    fn new(data: SharedGameData) -> Self {
+    fn new() -> Self {
         let (tx, rx) = flume::unbounded();
 
         WebSocket {
-            data,
             sender: None,
             tx,
             rx,
@@ -90,8 +89,8 @@ impl WebSocketInterface for WebSocket {
     fn poll(&mut self) -> Result<Vec<Vec<u8>>, String> {
         if self.status() == ConnectionStatus::Connected {
             for msg in self.send_queue.1.drain() {
-                log_to!(
-                    self.data.network,
+                log!(
+                    LogType::Network,
                     "Sending message (length: {}) to socket.",
                     msg.len()
                 );
@@ -106,7 +105,7 @@ impl WebSocketInterface for WebSocket {
 
             match ev {
                 Event::Connected(sender) => {
-                    log_to!(self.data.network, "Socket connected.");
+                    log!(LogType::Network, "Socket connected.");
                     self.sender = Some(sender);
                 }
                 Event::Message(msg) => v.push(msg.into_data()),
