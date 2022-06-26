@@ -227,6 +227,8 @@ checksum = "aae1277d39aeec15cb388266ecc24b11c80469deae6067e17a1a7aa9e5c1f234"
 [[package]]
 name = "aether-log"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "25d98869df6bc7b00b62e7971af605deb5cb67d7ee1018a26bc23f83d1009024"
 dependencies = [
  "chrono",
  "lazy_static",
