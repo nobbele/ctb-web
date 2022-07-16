@@ -3,7 +3,6 @@ use crate::{
     config,
     screen::game::{GameMessage, SharedGameData},
 };
-use async_trait::async_trait;
 use egui_macroquad::egui;
 use macroquad::prelude::*;
 
@@ -30,9 +29,8 @@ impl Settings {
     }
 }
 
-#[async_trait(?Send)]
 impl Overlay for Settings {
-    async fn update(&mut self, data: SharedGameData) {
+    fn update(&mut self, data: SharedGameData) {
         egui_macroquad::ui(|egui_ctx| {
             egui::Window::new("Settings")
                 .collapsible(false)

@@ -225,7 +225,7 @@ impl Game {
             main_track,
             playfield_size: Cell::new(playfield_size),
             max_stack: Cell::new(max_stack),
-            mods: RefCell::new(vec![crate::screen::gameplay::Mod::Rate(1.5)]),
+            mods: RefCell::new(Vec::new()),
             rate: Cell::new(1.0),
         });
 
@@ -330,6 +330,16 @@ impl Game {
             }
         }
 
+        if is_key_pressed(KeyCode::M) {
+            if let Some(OverlayEnum::Mods(_)) = self.overlay {
+                log!(LogType::General, "Closing mods overlay");
+                self.overlay = None;
+            } else {
+                log!(LogType::General, "Opening mods overlay");
+                self.overlay = Some(OverlayEnum::Mods(overlay::Mods::new(self.data.clone())));
+            }
+        }
+
         if is_key_pressed(KeyCode::F7) && self.azusa.is_none() {
             if let Some(OverlayEnum::Login(_)) = self.overlay {
                 log!(LogType::General, "Closing login overlay");
@@ -346,7 +356,7 @@ impl Game {
         }
 
         if let Some(overlay) = &mut self.overlay {
-            overlay.update(self.data.clone()).await;
+            overlay.update(self.data.clone());
             self.data.locked_input.set(true);
         }
         self.screen.update(self.data.clone()).await;
