@@ -23,6 +23,7 @@ use kira::{
         TrackBuilder, TrackRoutes,
     },
     tween::Tween,
+    PlaybackRate,
 };
 use macroquad::prelude::*;
 use ringbuffer::{ConstGenericRingBuffer, RingBuffer, RingBufferExt, RingBufferWrite};
@@ -40,6 +41,7 @@ pub enum GameMessage {
         handle: StaticSoundData,
         looping: bool,
     },
+    SetMusicRate(f32),
     PauseMusic,
     ResumeMusic,
     SetMainVolume(f32),
@@ -223,6 +225,8 @@ impl Game {
             main_track,
             playfield_size: Cell::new(playfield_size),
             max_stack: Cell::new(max_stack),
+            mods: RefCell::new(vec![crate::screen::gameplay::Mod::Rate(1.5)]),
+            rate: Cell::new(1.0),
         });
 
         let azusa = if let Some(token) = token {
@@ -277,7 +281,7 @@ impl Game {
 
                 self.data
                     .predicted_time
-                    .set(self.data.predicted_time.get() + get_frame_time());
+                    .set(self.data.predicted_time.get() + get_frame_time() * self.data.rate.get());
             } else {
                 let predicted_time = self.data.predicted_time.get();
                 if predicted_time != time {
@@ -423,6 +427,14 @@ impl Game {
                         println!("Cancelled");
                         self.data.promises().cancel(&old_loading_promise);
                     }
+                }
+                GameMessage::SetMusicRate(rate) => {
+                    self.data.rate.set(rate);
+                    self.data
+                        .state_mut()
+                        .music
+                        .set_playback_rate(PlaybackRate::Factor(rate as _), Tween::default())
+                        .unwrap();
                 }
             }
         }
