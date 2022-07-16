@@ -371,14 +371,15 @@ impl Screen for SelectScreen {
 
         let scroll_delta = mouse_wheel().1;
         if scroll_delta != 0. {
+            self.scroll_target = None;
             self.scroll_vel += scroll_delta * 1.5;
         }
         if let Some(scroll_target) = self.scroll_target {
             let offset = screen_height() / 2. - (self.chart_list.bounds().y + scroll_target);
             // Check if target is within reasonable bounds.
             if offset.abs() < 10. {
-                self.scroll_vel = 0.;
                 self.scroll_target = None;
+                self.scroll_vel = 0.;
             } else {
                 self.scroll_vel += offset / 400.;
             }
