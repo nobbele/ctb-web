@@ -19,7 +19,6 @@ pub mod config;
 pub mod convert;
 pub mod frozen;
 pub mod leaderboard;
-pub mod log;
 pub mod math;
 pub mod promise;
 pub mod rulesets;
@@ -27,6 +26,13 @@ pub mod score;
 pub mod screen;
 pub mod ui;
 pub mod web_socket;
+
+#[derive(Debug, Hash, PartialEq, Eq)]
+pub enum LogType {
+    General,
+    Network,
+    AudioPerformance,
+}
 
 pub struct Delay {
     target: f32,

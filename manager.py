@@ -121,8 +121,8 @@ def main(stdscr: curses.window):
 
     azusa = ProjectManager(stdscr, height - 3, term_width,
                            y=1, x=1, color=1, label="Azusa", target="azusa")
-    website = ProjectManager(stdscr, height - 3, term_width,
-                             y=1, x=term_width + 1, color=3, label="Website", target="website")
+    api = ProjectManager(stdscr, height - 3, term_width,
+                         y=1, x=term_width + 1, color=3, label="API", target="api")
 
     while(True):
         try:
@@ -130,14 +130,14 @@ def main(stdscr: curses.window):
             if ch == 'q':
                 break
             elif ch == 'w':
-                website.proc.rebuild()
+                api.proc.rebuild()
             elif ch == 'a':
                 azusa.proc.rebuild()
         except:
             pass
 
         azusa.draw()
-        website.draw()
+        api.draw()
 
 
 curses.wrapper(main)

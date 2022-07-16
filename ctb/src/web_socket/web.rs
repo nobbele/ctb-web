@@ -1,6 +1,5 @@
 // TODO Investigate whether we need all the atomics and mutexes here.
 use super::{ConnectionStatus, WebSocketInterface};
-use crate::web_socket::SharedGameData;
 use macroquad::prelude::*;
 use parking_lot::Mutex;
 use std::sync::{
@@ -20,7 +19,7 @@ pub struct WebSocket {
 }
 
 impl WebSocketInterface for WebSocket {
-    fn new(_data: SharedGameData) -> Self {
+    fn new() -> Self {
         // Broken channel
         let (_, rx) = flume::unbounded();
         WebSocket {

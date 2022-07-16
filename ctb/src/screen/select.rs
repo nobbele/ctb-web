@@ -169,17 +169,14 @@ impl ChartCalcData {
         anomalies.dedup();
         let spikiness = anomalies.iter().sum::<f32>() / anomalies.len() as f32;
 
-        let raw_value = (1.
-            + density_difficulty
-                * angle_difficulty
-                * angle_changes_difficulty.powi(2)
-                * density_inconsistency.sqrt()
-                * spikiness.sqrt()
-                * 100.)
+        (1. + density_difficulty
+            * angle_difficulty
+            * angle_changes_difficulty.powi(2)
+            * density_inconsistency.sqrt()
+            * spikiness.sqrt()
+            * 100.)
             .powf(1.5)
-            - 1.;
-
-        raw_value
+            - 1.
     }
 }
 
@@ -211,28 +208,25 @@ impl SelectScreen {
         let charts = get_charts();
 
         // TODO Cache this?
-        let diff_futures = charts
-            .iter()
-            .map(|chart| {
-                chart.difficulties.iter().map(|diff| async {
-                    let beatmap_data =
-                        load_file(&format!("resources/{}/{}.osu", chart.title, diff.name))
-                            .await
-                            .unwrap();
-                    let beatmap_content = std::str::from_utf8(&beatmap_data).unwrap();
-                    let beatmap = osu_parser::load_content(
-                        beatmap_content,
-                        osu_parser::BeatmapParseOptions::default(),
-                    )
-                    .unwrap();
-                    let chart_impl = crate::chart::Chart::convert_from(&beatmap);
-                    (
-                        format!("{}-{}", chart.title, diff.name),
-                        ChartCalcData::new(&chart_impl),
-                    )
-                })
+        let diff_futures = charts.iter().flat_map(|chart| {
+            chart.difficulties.iter().map(|diff| async {
+                let beatmap_data =
+                    load_file(&format!("resources/{}/{}.osu", chart.title, diff.name))
+                        .await
+                        .unwrap();
+                let beatmap_content = std::str::from_utf8(&beatmap_data).unwrap();
+                let beatmap = osu_parser::load_content(
+                    beatmap_content,
+                    osu_parser::BeatmapParseOptions::default(),
+                )
+                .unwrap();
+                let chart_impl = crate::chart::Chart::convert_from(&beatmap);
+                (
+                    format!("{}-{}", chart.title, diff.name),
+                    ChartCalcData::new(&chart_impl),
+                )
             })
-            .flatten();
+        });
         let mut diffs = HashMap::new();
         for diff_future in diff_futures {
             let (key, value) = diff_future.await;

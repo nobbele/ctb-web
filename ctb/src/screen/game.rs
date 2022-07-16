@@ -11,10 +11,10 @@ use crate::{
     chat,
     config::{get_value, set_value, KeyBinds},
     leaderboard::Leaderboard,
-    log::{LogType, Logger},
-    log_to,
     promise::{Promise, PromiseExecutor},
+    LogType,
 };
+use aether::log;
 use kira::{
     manager::{AudioManager, AudioManagerSettings},
     sound::static_sound::{PlaybackState, StaticSoundData},
@@ -31,7 +31,6 @@ use std::{
     future::Future,
     pin::Pin,
     rc::Rc,
-    time::Duration,
 };
 
 pub enum GameMessage {
@@ -86,7 +85,7 @@ impl GameMessage {
 pub type SharedGameData = Rc<GameData>;
 
 pub struct Game {
-    pub logger: Logger,
+    _keep: aether::KeepAlive,
     pub data: SharedGameData,
     screen: Box<dyn Screen>,
     overlay: Option<OverlayEnum>,
@@ -108,26 +107,16 @@ pub struct Game {
 
 impl Game {
     pub async fn new() -> Self {
-        #[cfg(not(target_family = "wasm"))]
-        std::fs::create_dir_all("data").unwrap();
-
-        let mut logger = Logger::new(Duration::from_secs(2));
-        let general = logger
-            .init_endpoint(LogType::General)
-            .path("data/general.log")
-            .build();
-        let network = logger
-            .init_endpoint(LogType::Network)
-            //.path("data/network.log")
-            .print(true)
-            .build();
-        let audio_performance = logger
-            .init_endpoint(LogType::AudioPerformance)
-            //.path("data/audio_performance.log")
-            .print(false)
+        let _keep = aether::init()
+            .base_path("data")
+            .setup(LogType::General, |ep| ep.path("general.log"))
+            .setup(LogType::Network, |ep| ep)
+            .setup(LogType::AudioPerformance, |ep| {
+                ep.path("audio.log").silent()
+            })
             .build();
 
-        log_to!(general, "Welcome to CTB-Web!");
+        aether::log!(LogType::General, "Welcome to CTB-Web!");
 
         let mut audio = AudioManager::new(AudioManagerSettings::default()).unwrap();
 
@@ -230,9 +219,6 @@ impl Game {
             promises: RefCell::new(PromiseExecutor::new()),
             packet_tx,
             game_tx,
-            general,
-            network,
-            audio_performance,
             hitsound_track,
             main_track,
             playfield_size: Cell::new(playfield_size),
@@ -240,13 +226,13 @@ impl Game {
         });
 
         let azusa = if let Some(token) = token {
-            Some(Azusa::new(data.clone(), token).await)
+            Some(Azusa::new(token).await)
         } else {
             None
         };
 
         Game {
-            logger,
+            _keep,
             screen: if first_time {
                 Box::new(SetupScreen::new())
             } else {
@@ -295,8 +281,8 @@ impl Game {
             } else {
                 let predicted_time = self.data.predicted_time.get();
                 if predicted_time != time {
-                    log_to!(
-                        self.data.audio_performance,
+                    log!(
+                        LogType::AudioPerformance,
                         "{} by {:.2}ms (avg: {:.2}) [Skip: {}]",
                         if predicted_time > time {
                             "Overestimated"
@@ -308,7 +294,7 @@ impl Game {
                         self.data.state().audio_frame_skip
                     );
                 } else {
-                    log_to!(self.data.audio_performance, "Wow! Perfect!");
+                    log!(LogType::AudioPerformance, "Wow! Perfect!");
                 }
 
                 self.audio_deltas.push(delta);
@@ -319,10 +305,10 @@ impl Game {
         if let Some(azusa) = &self.azusa {
             if azusa.connected() && is_key_pressed(KeyCode::F9) {
                 if let Some(OverlayEnum::Chat(_)) = self.overlay {
-                    log_to!(self.data.general, "Closing chat overlay");
+                    log!(LogType::General, "Closing chat overlay");
                     self.overlay = None;
                 } else {
-                    log_to!(self.data.general, "Opening chat overlay");
+                    log!(LogType::General, "Opening chat overlay");
                     self.overlay = Some(OverlayEnum::Chat(overlay::Chat::new()));
                 }
             }
@@ -330,25 +316,23 @@ impl Game {
 
         if is_key_pressed(KeyCode::F1) {
             if let Some(OverlayEnum::Settings(_)) = self.overlay {
-                log_to!(self.data.general, "Closing settings overlay");
+                log!(LogType::General, "Closing settings overlay");
                 self.overlay = None;
             } else {
-                log_to!(self.data.general, "Opening settings overlay");
+                log!(LogType::General, "Opening settings overlay");
                 self.overlay = Some(OverlayEnum::Settings(overlay::Settings::new(
                     self.data.clone(),
                 )));
             }
         }
 
-        if self.azusa.is_none() {
-            if is_key_pressed(KeyCode::F7) {
-                if let Some(OverlayEnum::Login(_)) = self.overlay {
-                    log_to!(self.data.general, "Closing login overlay");
-                    self.overlay = None;
-                } else {
-                    log_to!(self.data.general, "Opening login overlay");
-                    self.overlay = Some(OverlayEnum::Login(overlay::Login::new(self.data.clone())));
-                }
+        if is_key_pressed(KeyCode::F7) && self.azusa.is_none() {
+            if let Some(OverlayEnum::Login(_)) = self.overlay {
+                log!(LogType::General, "Closing login overlay");
+                self.overlay = None;
+            } else {
+                log!(LogType::General, "Opening login overlay");
+                self.overlay = Some(OverlayEnum::Login(overlay::Login::new(self.data.clone())));
             }
         }
 
@@ -455,11 +439,11 @@ impl Game {
                         let resp: LoginResponse = serde_json::from_str(&resp).unwrap();
                         let token_uuid = uuid::Uuid::parse_str(&resp.token).unwrap();
                         set_value("token", token_uuid);
-                        self.azusa = Some(Azusa::new(self.data.clone(), token_uuid).await);
+                        self.azusa = Some(Azusa::new(token_uuid).await);
                         self.overlay = None;
                     }
                     Err(err) => {
-                        log_to!(self.data.general, "Failed to request login token. {}", err)
+                        log!(LogType::General, "Failed to request login token. {}", err)
                     }
                 }
 
@@ -487,11 +471,11 @@ impl Game {
                 self.screen.handle_packet(self.data.clone(), &msg);
                 match msg {
                     ServerPacket::Connected { version } => {
-                        log_to!(self.data.network, "Connected to Azusa ({})!", version);
+                        log!(LogType::Network, "Connected to Azusa ({})!", version);
                         azusa.set_connected(true);
                     }
                     ServerPacket::Echo(s) => {
-                        log_to!(self.data.network, "Azusa says '{}'", s);
+                        log!(LogType::Network, "Azusa says '{}'", s);
                     }
                     ServerPacket::Pong => {
                         self.last_ping = get_time();
@@ -504,8 +488,6 @@ impl Game {
         }
 
         std::iter::from_fn(get_char_pressed).for_each(drop);
-
-        self.logger.flush();
     }
 
     pub fn draw(&self) {

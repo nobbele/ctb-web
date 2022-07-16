@@ -3,7 +3,7 @@ mod native;
 #[cfg(target_arch = "wasm32")]
 mod web;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConnectionStatus {
     Connected,
     Connecting,
@@ -11,7 +11,7 @@ pub enum ConnectionStatus {
 }
 
 pub trait WebSocketInterface {
-    fn new(data: SharedGameData) -> Self;
+    fn new() -> Self;
     fn reset(&mut self);
     fn connect(&mut self, addr: &str);
     fn poll(&mut self) -> Result<Vec<Vec<u8>>, String>;
@@ -19,7 +19,8 @@ pub trait WebSocketInterface {
     fn status(&self) -> ConnectionStatus;
 }
 
-use crate::{log_to, screen::game::SharedGameData};
+use crate::LogType;
+use aether::log;
 use instant::{Duration, Instant};
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -28,8 +29,6 @@ use native::WebSocket as WebSocketImpl;
 use web::WebSocket as WebSocketImpl;
 
 pub struct WebSocket {
-    data: SharedGameData,
-
     addresses: Vec<String>,
     address_index: usize,
 
@@ -40,13 +39,11 @@ pub struct WebSocket {
 }
 
 impl WebSocket {
-    pub fn new(data: SharedGameData, addresses: Vec<impl Into<String>>) -> Self {
+    pub fn new(addresses: Vec<impl Into<String>>) -> Self {
         WebSocket {
-            data: data.clone(),
-
             addresses: addresses.into_iter().map(Into::into).collect(),
             address_index: 0,
-            inner: WebSocketImpl::new(data),
+            inner: WebSocketImpl::new(),
 
             next_attempt: Instant::now(),
             connection_timeout: None,
@@ -58,7 +55,7 @@ impl WebSocket {
             ConnectionStatus::Connected => self.address_index = 0,
             ConnectionStatus::Connecting => {
                 if Instant::now() >= self.connection_timeout.unwrap() {
-                    log_to!(self.data.network, "Connection timed out");
+                    log!(LogType::Network, "Connection timed out");
 
                     // Easy way to reset the connection.
                     self.inner.reset();
@@ -67,7 +64,7 @@ impl WebSocket {
             ConnectionStatus::Disconnected => {
                 if Instant::now() >= self.next_attempt {
                     let addr: &str = &self.addresses[self.address_index];
-                    log_to!(self.data.network, "Attempting to connect to `{}`", addr);
+                    log!(LogType::Network, "Attempting to connect to `{}`", addr);
 
                     self.inner.connect(addr);
                     self.address_index += 1;

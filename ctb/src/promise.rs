@@ -2,7 +2,6 @@ use slotmap::SlotMap;
 use std::{any::Any, cell::Cell, future::Future, marker::PhantomData, pin::Pin};
 
 fn null_waker() -> std::task::Waker {
-    let w = ();
     fn _nothing1(_: *const ()) -> std::task::RawWaker {
         //panic!()
         std::task::RawWaker::new(
@@ -19,7 +18,7 @@ fn null_waker() -> std::task::Waker {
     fn _nothing4(_: *const ()) {}
     unsafe {
         std::task::Waker::from_raw(std::task::RawWaker::new(
-            &w as *const (),
+            &() as *const (),
             &std::task::RawWakerVTable::new(_nothing1, _nothing2, _nothing3, _nothing4),
         ))
     }
