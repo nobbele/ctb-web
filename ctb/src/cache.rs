@@ -42,10 +42,12 @@ pub enum LoadError {
     Generic,
 }
 
+/// Lazy-loads resources.
 pub struct Cache<T> {
     #[allow(dead_code)]
     cache_path: PathBuf,
     cache: RefCell<HashMap<String, Arc<T>>>,
+    /// Represents which files can or can not be loaded. This is needed because on web, there's no other way to check whether a file exists or not than to create an index.
     whitelist: RefCell<Vec<String>>,
 }
 
@@ -75,6 +77,7 @@ impl<T> Cache<T> {
     }
 }
 
+/// A future used to wait until a blocking function finishes. On native, without blocking by using threads. On web, blocking since we don't currently have access to threads.
 struct WaitForBlockingFuture<T, F> {
     done: Arc<AtomicBool>,
     f: Option<F>,
@@ -136,6 +139,7 @@ where
 impl<T, F> Unpin for WaitForBlockingFuture<T, F> {}
 
 impl Cache<StaticSoundData> {
+    /// Load sound without accessing the whitelist.
     pub async fn get_sound_bypass(
         &self,
         path: &str,
@@ -156,6 +160,8 @@ impl Cache<StaticSoundData> {
             .await;
         Ok((*res?).clone())
     }
+
+    /// Load sound while accessing the whitelist.
     pub async fn get_sound(
         &self,
         path: &str,

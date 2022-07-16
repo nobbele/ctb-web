@@ -278,6 +278,7 @@ impl Screen for Gameplay<CatchRuleset> {
         let binds = data.state().binds;
 
         if !self.started {
+            // Manages the preempt timing before actually starting the map.
             self.prev_time = self.time;
             self.time = -self.time_countdown;
             self.predicted_time = -self.time_countdown;
@@ -476,6 +477,7 @@ impl Screen for Gameplay<CatchRuleset> {
         if self.queued_fruits.is_empty() && !self.ended {
             self.fade_out -= get_frame_time();
 
+            // Once the screen has faded out, submit the score and change to the result screen.
             if self.fade_out <= 0. {
                 let diff_id = data.state().difficulty().id;
                 let score = self.recorder.to_score(diff_id);

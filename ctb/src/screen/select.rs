@@ -299,7 +299,7 @@ impl SelectScreen {
         }
     }
 
-    async fn start_map(&self, data: SharedGameData) {
+    fn start_map(&self, data: SharedGameData) {
         self.started_map.set(true);
         let chart = &self.charts[self.selected_chart];
         data.broadcast(GameMessage::load_screen({
@@ -451,7 +451,7 @@ impl Screen for SelectScreen {
         }
 
         if data.is_key_pressed(KeyCode::Enter) {
-            self.start_map(data.clone()).await;
+            self.start_map(data.clone());
         }
 
         for message in self.rx.try_iter() {
@@ -535,7 +535,7 @@ impl Screen for SelectScreen {
                 }
                 if message.target == self.start.id {
                     if let MessageData::MenuButton(MenuButtonMessage::Selected) = message.data {
-                        self.start_map(data.clone()).await;
+                        self.start_map(data.clone());
                     }
                 }
             }

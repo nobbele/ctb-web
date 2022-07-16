@@ -2,6 +2,7 @@ use macroquad::prelude::*;
 use serde::ser::SerializeMap;
 use std::intrinsics::transmute;
 
+/// Sets a global configuration value. Uses local sotrage on web and "data/config.json" on native.
 pub fn set_value<T: serde::Serialize>(key: &str, value: T) {
     let value = serde_json::to_value(value).unwrap();
     #[cfg(target_family = "wasm")]
@@ -37,6 +38,7 @@ pub fn set_value<T: serde::Serialize>(key: &str, value: T) {
     }
 }
 
+/// Gets a global configuration value. Uses local sotrage on web and "data/config.json" on native.
 pub fn get_value<T: serde::de::DeserializeOwned>(key: &str) -> Option<T> {
     #[cfg(target_family = "wasm")]
     {
@@ -83,6 +85,7 @@ impl serde::Serialize for KeyBinds {
     }
 }
 
+/// [`macroquad::KeyCode`] doesn't implement [`serde::Deserialize`] or [`serde::Serialize`]..
 struct KeyBindVisitor;
 
 impl<'de> serde::de::Visitor<'de> for KeyBindVisitor {

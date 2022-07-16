@@ -275,6 +275,7 @@ impl Game {
         if playing {
             if delta == 0. {
                 if avg_delta != 0. {
+                    // The average frames per "audio frame" will appoximately be the average time between audio frames divided by the time between frames.
                     let frames_per_audio_frame = avg_delta / get_frame_time();
                     self.data.state_mut().audio_frame_skip = frames_per_audio_frame as u32;
                 }

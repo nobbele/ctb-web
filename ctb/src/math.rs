@@ -3,6 +3,7 @@ pub fn lerp(min: f32, max: f32, progress: f32) -> f32 {
     min + (max - min) * progress
 }
 
+/// Returns a point that is the percent of `progress` inbetween `min` and `max`
 pub fn clamped_lerp(min: f32, max: f32, progress: f32) -> f32 {
     lerp(min, max, progress).clamp(min.min(max), max.max(min))
 }
@@ -35,7 +36,7 @@ pub fn remap(in_min: f32, in_max: f32, out_min: f32, out_max: f32, value: f32) -
     lerp(out_min, out_max, inv_lerp(in_min, in_max, value))
 }
 
-/// Same as `remap` but clamps the value between `out_min` and `out_max`.
+/// Maps `value` in the coordinate system of `in_min` to `in_max` to the coordinate system of `out_min` to `out_max`
 pub fn clamped_remap(in_min: f32, in_max: f32, out_min: f32, out_max: f32, value: f32) -> f32 {
     lerp(out_min, out_max, inv_lerp(in_min, in_max, value))
         .clamp(out_min.min(out_max), out_max.max(out_min))

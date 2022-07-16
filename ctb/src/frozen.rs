@@ -1,3 +1,4 @@
+/// Frozen type can't be modified even if mutable.
 #[derive(Copy, Clone, Default, Eq, Hash, PartialEq, PartialOrd, Ord, Debug)]
 pub struct Frozen<T>(pub T);
 
