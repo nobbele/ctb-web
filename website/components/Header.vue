@@ -6,13 +6,15 @@
             <NuxtLink to="/play">Play</NuxtLink>
             <NuxtLink to="/registration">Register</NuxtLink>
         </nav>
-        <div class="profile-button" @click="showProfileMenu = !showProfileMenu;">
-            <img src="/assets/Guest.png" role="button" height="48" />
+        <div class="profile">
+            <p class="profile-name">Guest #0</p>
+            <img class="profile-button" src="/assets/Guest.png" role="button" height="48"
+                @click="showProfileMenu = !showProfileMenu;" />
             <div class="profile-popup">
                 <div class="profile-menu" :class="{ 'profile-menu-visible': showProfileMenu }">
-                    <p> -- Profile -- </p>
-                    <a>Button A</a>
-                    <a>Button B</a>
+                    <a>Profile</a>
+                    <a>Friends</a>
+                    <a>Settings</a>
                 </div>
             </div>
         </div>
@@ -47,23 +49,27 @@ export default defineComponent({
 
     padding: 6px
 
-.profile-button
-    cursor: pointer
+.profile-name
+    margin-right: 6px
+
+.profile
     margin-left: auto
-    margin-right: 45px
+    margin-right: 58px
     border-radius: 50%
 
     display: flex
     position: relative
+    align-items: center
 
-.profile-button > img
+.profile-button
     display: block
     border-radius: 50%
+    cursor: pointer
 
 .profile-popup
     position: absolute
     top: 100%
-    right: -45px
+    right: calc((48px - 10rem) / 2)
     height: 0
     margin-top: 4px
     visibility: hidden
@@ -80,7 +86,7 @@ export default defineComponent({
     border-radius: 8px
     padding: 8px
 
-    width: 10em
+    width: 10rem
 
     box-shadow: 0 2px 6px 0
 

@@ -93,6 +93,10 @@ pub struct DisposedFruits {
     time_since_dispose: f32,
 }
 
+pub enum Mod {
+    Rate(f32),
+}
+
 pub struct Gameplay<R: Ruleset> {
     chart_name: String,
     recorder: ScoreRecorder<R::Judgement>,
@@ -165,7 +169,7 @@ impl Gameplay<CatchRuleset> {
 
         let replay = Replay::new(approx_frame_count);
 
-        Gameplay {
+        let mut gameplay = Gameplay {
             chart_name: chart_name.to_owned(),
             ruleset: CatchRuleset::new(),
 
@@ -192,7 +196,13 @@ impl Gameplay<CatchRuleset> {
             volume: 1.,
             plate: vec![],
             disposed_fruits: vec![],
+        };
+
+        for to_apply in data.clone().mods.borrow().iter() {
+            gameplay.apply(to_apply, data.clone());
         }
+
+        gameplay
     }
 
     fn catcher_y(&self) -> f32 {
@@ -244,6 +254,22 @@ impl Gameplay<CatchRuleset> {
             time_since_dispose: 0.,
         });
     }
+
+    pub fn apply(&mut self, new_mod: &Mod, data: SharedGameData) {
+        match new_mod {
+            Mod::Rate(rate) => {
+                data.broadcast(GameMessage::SetMusicRate(*rate));
+            }
+        }
+    }
+
+    pub fn unapply(&mut self, new_mod: &Mod, data: SharedGameData) {
+        match new_mod {
+            Mod::Rate(_rate) => {
+                data.broadcast(GameMessage::SetMusicRate(1.0));
+            }
+        }
+    }
 }
 
 #[async_trait(?Send)]
@@ -252,11 +278,12 @@ impl Screen for Gameplay<CatchRuleset> {
         let binds = data.state().binds;
 
         if !self.started {
+            // Manages the preempt timing before actually starting the map.
             self.prev_time = self.time;
             self.time = -self.time_countdown;
             self.predicted_time = -self.time_countdown;
             if self.time_countdown > 0. {
-                self.time_countdown -= get_frame_time();
+                self.time_countdown -= get_frame_time() * data.rate.get();
             } else {
                 data.broadcast(GameMessage::ResumeMusic);
                 self.started = true;
@@ -400,7 +427,7 @@ impl Screen for Gameplay<CatchRuleset> {
             };
 
             self.ruleset.update(
-                get_frame_time(),
+                get_frame_time() * data.rate.get(),
                 input,
                 &defer_delete
                     .iter()
@@ -450,6 +477,7 @@ impl Screen for Gameplay<CatchRuleset> {
         if self.queued_fruits.is_empty() && !self.ended {
             self.fade_out -= get_frame_time();
 
+            // Once the screen has faded out, submit the score and change to the result screen.
             if self.fade_out <= 0. {
                 let diff_id = data.state().difficulty().id;
                 let score = self.recorder.to_score(diff_id);

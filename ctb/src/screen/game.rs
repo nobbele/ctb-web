@@ -23,6 +23,7 @@ use kira::{
         TrackBuilder, TrackRoutes,
     },
     tween::Tween,
+    PlaybackRate,
 };
 use macroquad::prelude::*;
 use ringbuffer::{ConstGenericRingBuffer, RingBuffer, RingBufferExt, RingBufferWrite};
@@ -40,6 +41,7 @@ pub enum GameMessage {
         handle: StaticSoundData,
         looping: bool,
     },
+    SetMusicRate(f32),
     PauseMusic,
     ResumeMusic,
     SetMainVolume(f32),
@@ -223,6 +225,8 @@ impl Game {
             main_track,
             playfield_size: Cell::new(playfield_size),
             max_stack: Cell::new(max_stack),
+            mods: RefCell::new(Vec::new()),
+            rate: Cell::new(1.0),
         });
 
         let azusa = if let Some(token) = token {
@@ -271,13 +275,14 @@ impl Game {
         if playing {
             if delta == 0. {
                 if avg_delta != 0. {
+                    // The average frames per "audio frame" will appoximately be the average time between audio frames divided by the time between frames.
                     let frames_per_audio_frame = avg_delta / get_frame_time();
                     self.data.state_mut().audio_frame_skip = frames_per_audio_frame as u32;
                 }
 
                 self.data
                     .predicted_time
-                    .set(self.data.predicted_time.get() + get_frame_time());
+                    .set(self.data.predicted_time.get() + get_frame_time() * self.data.rate.get());
             } else {
                 let predicted_time = self.data.predicted_time.get();
                 if predicted_time != time {
@@ -326,6 +331,16 @@ impl Game {
             }
         }
 
+        if is_key_pressed(KeyCode::M) {
+            if let Some(OverlayEnum::Mods(_)) = self.overlay {
+                log!(LogType::General, "Closing mods overlay");
+                self.overlay = None;
+            } else {
+                log!(LogType::General, "Opening mods overlay");
+                self.overlay = Some(OverlayEnum::Mods(overlay::Mods::new(self.data.clone())));
+            }
+        }
+
         if is_key_pressed(KeyCode::F7) && self.azusa.is_none() {
             if let Some(OverlayEnum::Login(_)) = self.overlay {
                 log!(LogType::General, "Closing login overlay");
@@ -342,7 +357,7 @@ impl Game {
         }
 
         if let Some(overlay) = &mut self.overlay {
-            overlay.update(self.data.clone()).await;
+            overlay.update(self.data.clone());
             self.data.locked_input.set(true);
         }
         self.screen.update(self.data.clone()).await;
@@ -423,6 +438,14 @@ impl Game {
                         println!("Cancelled");
                         self.data.promises().cancel(&old_loading_promise);
                     }
+                }
+                GameMessage::SetMusicRate(rate) => {
+                    self.data.rate.set(rate);
+                    self.data
+                        .state_mut()
+                        .music
+                        .set_playback_rate(PlaybackRate::Factor(rate as _), Tween::default())
+                        .unwrap();
                 }
             }
         }

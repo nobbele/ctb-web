@@ -1,6 +1,5 @@
 use super::Overlay;
 use crate::{azusa::ClientPacket, screen::game::SharedGameData};
-use async_trait::async_trait;
 use macroquad::prelude::*;
 use std::fmt::Write;
 
@@ -16,9 +15,8 @@ impl Chat {
     }
 }
 
-#[async_trait(?Send)]
 impl Overlay for Chat {
-    async fn update(&mut self, data: SharedGameData) {
+    fn update(&mut self, data: SharedGameData) {
         while let Some(char) = get_char_pressed() {
             self.text_buffer.write_char(char).unwrap();
         }

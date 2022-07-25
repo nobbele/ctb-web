@@ -7,6 +7,7 @@ async fn main() {
     println!("Starting game..");
     let mut game = Game::new().await;
     loop {
+        // TODO We definitely need to move this to fixed delta for determinism (esp. with replays and potentionally multiplayer).
         game.update().await;
 
         clear_background(BLACK);

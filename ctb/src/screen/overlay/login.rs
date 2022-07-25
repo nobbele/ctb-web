@@ -1,6 +1,5 @@
 use super::Overlay;
 use crate::screen::game::{GameMessage, SharedGameData};
-use async_trait::async_trait;
 use egui_macroquad::egui;
 
 pub struct Login {
@@ -17,9 +16,8 @@ impl Login {
     }
 }
 
-#[async_trait(?Send)]
 impl Overlay for Login {
-    async fn update(&mut self, data: SharedGameData) {
+    fn update(&mut self, data: SharedGameData) {
         egui_macroquad::ui(|egui_ctx| {
             egui::Window::new("Login")
                 .collapsible(false)

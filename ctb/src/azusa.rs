@@ -6,31 +6,44 @@ use aether::log;
 use macroquad::prelude::*;
 use serde::{Deserialize, Serialize};
 
+/// Packet sent from Azusa, towards the game client
 #[derive(Debug, Serialize, Deserialize)]
 pub enum ServerPacket {
+    /// Response to [`ClientPacket::Ping`]
     Pong,
+    /// Response to [`ClientPacket::Echo`], returning the same value sent by the client. Used for testing
     Echo(String),
+    /// Receive a chat message from the global chat
     Chat(ChatMessagePacket),
-    Connected {
-        version: String,
-    },
+    /// Inform the client they have been connected and logged in
+    Connected { version: String },
+    /// Response to [`ClientPacket::RequestLeaderboard`]
     Leaderboard {
         diff_id: u32,
         scores: Vec<CatchScore>,
     },
 }
 
+/// Packet sent from the game client, towards Azusa
 #[derive(Debug, Serialize, Deserialize)]
 pub enum ClientPacket {
+    /// Ping Azusa, used to check connectivity
     Ping,
+    /// Used for testing
     Echo(String),
+    /// Sends a chat message to the global chat
     Chat(String),
+    /// Authenticate with the server using UUID. To login with username and password, use the website API
     Login(uuid::Uuid),
+    /// Submit a score to the leaderboard
     Submit(CatchScore),
+    /// Request the leaderboard for given difficulty id. Reponse given via [`ServerPacket::Leaderboard`]
     RequestLeaderboard(u32),
+    /// Inform Azusa we are quitting
     Goodbye,
 }
 
+/// Manages things related to communication with Azusa (game server)
 pub struct Azusa {
     ws: WebSocket,
     connected: bool,
@@ -50,6 +63,7 @@ impl Azusa {
         }
     }
 
+    /// Drain all packets that were queued since last call.
     pub fn receive(&mut self) -> Vec<ServerPacket> {
         if self.ws.status() != ConnectionStatus::Connected && self.connected {
             self.set_connected(false);
@@ -74,16 +88,23 @@ impl Azusa {
             .collect()
     }
 
+    /// Set whether or not we are connected.
+    ///
+    /// This is managed outside of this object because this needs to be set when we receive [`ServerPacket::Connected`] or if pinging failed, which are both handled in the Game object.
+    ///
+    /// It would be possible to view every [`ServerPacket`] received in [`Self::receive`] but I think this approach is a bit cleaner albeit being a bit confusing.
     pub fn set_connected(&mut self, status: bool) {
         log!(LogType::Network, "Azusa connected status: {}", status);
         self.connected = status;
         self.logging_in = false;
     }
 
+    /// Returns the value of the `connected` field
     pub fn connected(&self) -> bool {
         self.connected
     }
 
+    /// Sends a message to Azusa.
     pub fn send(&self, message: &ClientPacket) {
         log!(LogType::Network, "Sending packet: {:?}", message);
         self.ws.send(bincode::serialize(message).unwrap());

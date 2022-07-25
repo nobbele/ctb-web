@@ -1,5 +1,6 @@
 use macroquad::prelude::Color;
 
+/// Represents hitsound additions.
 #[derive(Debug, Copy, Clone)]
 pub struct Additions {
     pub whistle: bool,
@@ -7,6 +8,7 @@ pub struct Additions {
     pub clap: bool,
 }
 
+/// Represents a catch fruit.
 #[derive(Debug, Copy, Clone)]
 pub struct Fruit {
     pub position: f32,
@@ -20,6 +22,7 @@ pub struct Fruit {
 }
 
 impl Fruit {
+    /// Calculate the angle from `self` to `other` where they fall across the screen in `fall_time` seconds.
     pub fn angle_to(&self, other: &Fruit, fall_time: f32) -> f32 {
         let time_to_hit = other.time.max(self.time) - other.time.min(self.time);
         const H: f32 = 768.;

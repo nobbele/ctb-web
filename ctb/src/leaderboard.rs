@@ -6,12 +6,14 @@ use {
     std::{collections::HashMap, ops::Deref},
 };
 
+/// An entry on the leaderboard.
 #[derive(Debug, Clone)]
 pub struct LeaderboardEntry {
     pub score: u32,
     pub accuracy: f32,
 }
 
+/// Leaderboard is an object that takes care of score submission and retreival. Currently native only.
 pub struct Leaderboard {
     #[cfg(not(target_family = "wasm"))]
     glue: Glue<gluesql::sled_storage::sled::IVec, SledStorage>,

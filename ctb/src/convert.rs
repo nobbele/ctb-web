@@ -5,6 +5,9 @@ use crate::{
 use macroquad::prelude::Color;
 use osu_types::SpecificHitObject;
 
+/// Converts from bits used in osu to an `Additions´ struct.
+///
+/// 0000\[clap]\[finish]\[whistle]0
 pub fn from_hit_sound_bits(bits: u8) -> Additions {
     Additions {
         whistle: bits & (1 << 1) > 0,
@@ -13,6 +16,7 @@ pub fn from_hit_sound_bits(bits: u8) -> Additions {
     }
 }
 
+/// Converts an osu [`osu_types::HitObject`] into a catch [`Fruit`]
 pub fn from_hitobject(
     hitobject: &osu_types::HitObject,
     small: bool,
@@ -35,12 +39,14 @@ pub fn from_hitobject(
     }
 }
 
+/// Trait that defines types [`Chart`] can be converted from. This is very similar to the [`From`] trait.
 pub trait ConvertFrom<T> {
     fn convert_from(foreign: &T) -> Self;
 }
 
 impl ConvertFrom<osu_parser::Beatmap> for Chart {
     fn convert_from(beatmap: &osu_parser::Beatmap) -> Self {
+        // List of "osu!pixels per seconds" at timing points.
         let opx_per_secs = beatmap
             .timing_points
             .iter()
@@ -60,6 +66,7 @@ impl ConvertFrom<osu_parser::Beatmap> for Chart {
                 ))
             })
             .collect::<Vec<_>>();
+        // List of "beats per second" at timing points.
         let bps = beatmap
             .timing_points
             .iter()
@@ -72,7 +79,10 @@ impl ConvertFrom<osu_parser::Beatmap> for Chart {
             })
             .collect::<Vec<_>>();
 
+        // Index into the beatmap color table. Incremented once per new combo.
         let mut color_idx = 0;
+
+        // Checks whether the current hitobject we are iterating over is the first one. Used to prevent incrementing color index at the start.
         let mut is_first = true;
 
         let mut fruits = Vec::with_capacity(beatmap.hit_objects.len());
@@ -83,6 +93,7 @@ impl ConvertFrom<osu_parser::Beatmap> for Chart {
             }
             let color = beatmap.colors[color_idx];
 
+            // Get the "osu!pixels per second" from the last timing point that is before the current hitobject, aka the current timing point.
             let opx_per_sec = opx_per_secs
                 .iter()
                 .take_while(|&p| p.0 <= hitobject.time as i32)
@@ -104,6 +115,7 @@ impl ConvertFrom<osu_parser::Beatmap> for Chart {
             );
             fruits.push(fruit);
 
+            // If it's a slider we need to create the drop and the slider tail fruit.
             if let osu_types::SpecificHitObject::Slider {
                 curve_type,
                 curve_points,
@@ -111,6 +123,7 @@ impl ConvertFrom<osu_parser::Beatmap> for Chart {
                 ..
             } = &hitobject.specific
             {
+                // Get the "beats per second" from the last timing point that is before the current hitobject, aka the current timing point.
                 let bps = bps
                     .iter()
                     .take_while(|&p| p.0 <= hitobject.time as i32)
@@ -118,6 +131,7 @@ impl ConvertFrom<osu_parser::Beatmap> for Chart {
                     .unwrap()
                     .1;
 
+                // Beatmap file lacks the initial curve point so we need to add that manually.
                 let mut curve_points = curve_points.clone();
                 curve_points.insert(
                     0,
@@ -130,11 +144,13 @@ impl ConvertFrom<osu_parser::Beatmap> for Chart {
                 let spline =
                     osu_utils::Spline::from_control(*curve_type, &curve_points, Some(*length));
 
+                // Length of the current slider in seconds.
                 let slide_length_secs = length / opx_per_sec;
 
                 let secs_per_beat = 1.0 / bps;
                 let secs_per_drop = secs_per_beat / beatmap.info.difficulty.slider_tick_rate;
 
+                // Place a drop every `secs_per_drop` seconds.
                 let drops = (slide_length_secs / secs_per_drop).floor() as u32;
                 for i in 1..drops {
                     let sec = secs_per_drop * i as f32;
@@ -149,6 +165,8 @@ impl ConvertFrom<osu_parser::Beatmap> for Chart {
                         ..fruit
                     })
                 }
+
+                // Create slider tail fruit.
                 fruits.push(Fruit {
                     position: spline.point_at_length(*length).x,
                     time: fruit.time + slide_length_secs,
@@ -162,6 +180,7 @@ impl ConvertFrom<osu_parser::Beatmap> for Chart {
             is_first = false;
         }
 
+        // Calculate hyper speeds for each fruit.
         for idx in 0..fruits.len().saturating_sub(1) {
             let [fruit, next_fruit]: &mut [Fruit; 2] =
                 (&mut fruits[idx..idx + 2]).try_into().unwrap();
@@ -230,6 +249,7 @@ impl ConvertFrom<osu_parser::Beatmap> for Chart {
             events: sections,
             fall_time: osu_utils::ar_to_ms(beatmap.info.difficulty.ar) / 1000.,
             fruit_radius: osu_utils::cs_to_px(beatmap.info.difficulty.cs),
+            // Taken from osu!lazer source code.
             catcher_width: {
                 let scale = 1. - 0.7 * (beatmap.info.difficulty.cs - 5.) / 5.;
                 106.75 * scale * 0.8

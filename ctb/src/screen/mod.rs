@@ -15,7 +15,10 @@ use kira::{
 use macroquad::prelude::*;
 use std::cell::{Cell, Ref, RefCell, RefMut};
 
-use self::game::{GameMessage, SharedGameData};
+use self::{
+    game::{GameMessage, SharedGameData},
+    gameplay::Mod,
+};
 
 pub mod game;
 pub mod gameplay;
@@ -181,14 +184,19 @@ pub struct GameData {
     promises: RefCell<PromiseExecutor>,
     packet_tx: flume::Sender<ClientPacket>,
     game_tx: flume::Sender<GameMessage>,
+
+    mods: RefCell<Vec<Mod>>,
+    rate: Cell<f32>,
 }
 
 impl GameData {
+    /// Send a message to the game manager.
     // TODO Improve name.
     pub fn broadcast(&self, msg: GameMessage) {
         self.game_tx.send(msg).unwrap();
     }
 
+    /// Send a packet to Azusa.
     // TODO Improve name.
     pub fn send_server(&self, msg: ClientPacket) {
         self.packet_tx.send(msg).unwrap();
