@@ -47,7 +47,7 @@ class ProjectRunner:
 
         def start_build(o: ProjectRunner, queue: Queue[str]):
             queue.put("Starting build..", False)
-            subprocess.run(f"cargo build --quiet --target-dir=target", cwd=o.target,
+            subprocess.run(f"cargo build --quiet", cwd=o.target,
                            shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
             o.built = True
             queue.put("Build finished!", False)

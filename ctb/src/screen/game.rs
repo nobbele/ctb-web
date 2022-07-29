@@ -109,14 +109,22 @@ pub struct Game {
 
 impl Game {
     pub async fn new() -> Self {
-        let _keep = aether::init()
-            .base_path("data")
-            .setup(LogType::General, |ep| ep.path("general.log"))
-            .setup(LogType::Network, |ep| ep)
-            .setup(LogType::AudioPerformance, |ep| {
-                ep.path("audio.log").silent()
-            })
-            .build();
+        let _keep = if cfg!(target_arch = "wasm32") {
+            aether::init()
+                .setup(LogType::General, |ep| ep)
+                .setup(LogType::Network, |ep| ep)
+                .setup(LogType::AudioPerformance, |ep| ep.silent())
+                .build()
+        } else {
+            aether::init()
+                .base_path("data")
+                .setup(LogType::General, |ep| ep.path("general.log"))
+                .setup(LogType::Network, |ep| ep)
+                .setup(LogType::AudioPerformance, |ep| {
+                    ep.path("audio.log").silent()
+                })
+                .build()
+        };
 
         aether::log!(LogType::General, "Welcome to CTB-Web!");
 
