@@ -6,7 +6,7 @@ interface Notification {
   id: number,
 
   message: string,
-  type: NotificationType ,
+  type: NotificationType,
 
   active: boolean,
   visible: boolean,

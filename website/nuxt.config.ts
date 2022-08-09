@@ -16,4 +16,9 @@ export default defineNuxtConfig({
             },
         },
     },
+    runtimeConfig: {
+        public: {
+            apiBase: 'ctbwapi.nobbele.dev',
+        }
+    }
 });

@@ -1,4 +1,4 @@
-use actix_web::{web, Responder};
+use actix_web::web;
 use serde::{Deserialize, Serialize};
 use sqlx::{types::Uuid, PgPool};
 
@@ -10,7 +10,13 @@ pub enum LoginError {
 impl std::fmt::Display for LoginError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            LoginError::InvalidCredentials => writeln!(f, "Invalid Credentials"),
+            LoginError::InvalidCredentials => {
+                writeln!(
+                    f,
+                    "{}",
+                    serde_json::json!({ "error": "invalid-credentials" })
+                )
+            }
         }
     }
 }
@@ -31,7 +37,7 @@ pub struct LoginResponse {
 pub async fn login(
     pool: web::Data<PgPool>,
     web::Json(req): web::Json<LoginRequest>,
-) -> Result<impl Responder, LoginError> {
+) -> Result<web::Json<LoginResponse>, LoginError> {
     let config = argon2::Config::default();
     let hash = argon2::hash_encoded(
         req.password.as_bytes(),
@@ -51,7 +57,6 @@ pub async fn login(
             Some((user_id,)) => user_id,
             None => return Err(LoginError::InvalidCredentials),
         };
-    let user_id = u32::try_from(user_id).unwrap();
 
     let (token,): (Uuid,) = sqlx::query_as("INSERT INTO sessions VALUES ($1) RETURNING token;")
         .bind(user_id)
@@ -61,57 +66,8 @@ pub async fn login(
 
     Ok(web::Json(LoginResponse {
         token: token
-            .to_simple()
+            .as_simple()
             .encode_upper(&mut Uuid::encode_buffer())
             .to_owned(),
     }))
-}
-
-#[derive(Debug)]
-pub enum RegistrationError {
-    InvalidData,
-}
-
-impl std::fmt::Display for RegistrationError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            RegistrationError::InvalidData => writeln!(f, "Invalid Data"),
-        }
-    }
-}
-
-impl actix_web::error::ResponseError for RegistrationError {}
-
-#[derive(Debug, Deserialize)]
-pub struct RegistrationRequest {
-    username: String,
-    email: String,
-    password: String,
-}
-
-pub async fn register(
-    pool: web::Data<PgPool>,
-    web::Json(req): web::Json<RegistrationRequest>,
-) -> Result<impl Responder, RegistrationError> {
-    if req.username.len() > 16 || req.email.len() > 64 {
-        return Err(RegistrationError::InvalidData);
-    }
-
-    let config = argon2::Config::default();
-    let hash = argon2::hash_encoded(
-        req.password.as_bytes(),
-        std::env::var("PW_SECRET").unwrap().as_bytes(),
-        &config,
-    )
-    .unwrap();
-
-    sqlx::query("INSERT INTO users(username, email, password) VALUES ($1, $2, $3);")
-        .bind(req.username)
-        .bind(req.email)
-        .bind(hash)
-        .execute(pool.get_ref())
-        .await
-        .unwrap();
-
-    Ok("Success")
 }

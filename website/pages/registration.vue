@@ -8,13 +8,13 @@
 </template>
 
 <script lang="ts">
-import { RegistrationData } from "plugins/api";
+import { RegistrationData, withApi } from "~~/composables/withApi";
 
 export default defineComponent({
     methods: {
         async handleRegistration(data: RegistrationData) {
             try {
-                await this.$ctbWebApi.register(data);
+                await withApi().register(data);
                 this.$notify("Registration Successful.");
             } catch (reason) {
                 this.$notify(`Registration Failed.. Reason: ${reason}`, 'failure');
