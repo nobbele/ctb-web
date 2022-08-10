@@ -5,9 +5,9 @@ edition = "2021"
 
 [dependencies]
 macroquad = { version = "0.3.16", default-features = false }
-osu-types = { path = "../../osu-rs/osu-types" }
-osu-parser = { path = "../../osu-rs/osu-parser" }
-osu-utils = { path = "../../osu-rs/osu-utils" }
+osu-types = { git = "https://github.com/nobbele/osu-rs" }
+osu-parser = { git = "https://github.com/nobbele/osu-rs" }
+osu-utils = { git = "https://github.com/nobbele/osu-rs" }
 kira = { version = "0.6.0", default-features = false, features = ['cpal', 'wav'] }
 num-format = "0.4.0"
 async-trait = "0.1.52"
@@ -19,16 +19,16 @@ slotmap = "1.0.6"
 bincode = "1.3.3"
 mint = "0.5.9"
 thiserror = "1.0.30"
-uuid = { version = "0.8.2", default-features = false, features = ["serde"] }
+uuid = { version = "1.1.2", default-features = false, features = ["serde"] }
 egui-macroquad = "0.11.0"
 noisy_float = { version = "0.2.0", features = ["serde"] }
 rmp-serde = "1.1.0"
 time = { version = "0.3.9", features = ["formatting"] }
 quad-net = "0.1.1"
-aether-log = "0.1.0"
+aether-log = "0.1.1"
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
-gluesql = { version = "0.10.2", default-features = false, features = ["sled-storage"] }
+gluesql = { version = "0.11.0", default-features = false, features = ["sled-storage"] }
 qws = "0.7.9"
 instant = "0.1.12"
 ureq = { version = "2.4.0", features = ["json"] }

@@ -7,7 +7,7 @@ pub mod client;
 #[tokio::main]
 async fn main() {
     println!("Starting Azusa..");
-    dotenv::dotenv().unwrap();
+    dotenv::dotenv().ok();
     let app = App::new().await;
     let socket = TcpListener::bind("0.0.0.0:3012").await.unwrap();
 

@@ -6,6 +6,6 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-osu-types = { path = "../../osu-rs/osu-types" }
-osu-parser = { path = "../../osu-rs/osu-parser" }
-serde_json = "1.0.81"
+osu-types = { git = "https://github.com/nobbele/osu-rs" }
+osu-parser = { git = "https://github.com/nobbele/osu-rs" }
+serde_json = "1.0.83"

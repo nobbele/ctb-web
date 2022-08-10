@@ -171,7 +171,7 @@ CREATE TABLE IF NOT EXISTS scores (
 
             let (username,): (String,) =
                 sqlx::query_as("SELECT username FROM users WHERE user_id = $1;")
-                    .bind(user_id)
+                    .bind(i32::try_from(user_id).unwrap())
                     .fetch_one(&self.pool)
                     .await
                     .unwrap();

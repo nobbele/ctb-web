@@ -68,12 +68,12 @@ impl Client {
             ClientPacket::Submit(score) => {
                 println!("Submitting score for {}", self.username);
                 sqlx::query("INSERT INTO scores(user_id, diff_id, hit_count, miss_count, score, top_combo) VALUES ($1, $2, $3, $4, $5, $6)")
-                .bind(self.user_id)
-                .bind(score.diff_id)
-                .bind(score.judgements[&JudgementResult::Hit(CatchJudgement::Perfect)])
-                .bind(score.judgements[&JudgementResult::Miss])
-                .bind(score.score)
-                .bind(score.top_combo).execute(&self.app.pool).await.unwrap();
+                .bind(i32::try_from(self.user_id).unwrap())
+                .bind(i32::try_from(score.diff_id).unwrap())
+                .bind(i32::try_from(score.judgements[&JudgementResult::Hit(CatchJudgement::Perfect)]).unwrap())
+                .bind(i32::try_from(score.judgements[&JudgementResult::Miss]).unwrap())
+                .bind(i32::try_from(score.score).unwrap())
+                .bind(i32::try_from(score.top_combo).unwrap()).execute(&self.app.pool).await.unwrap();
             }
             ClientPacket::RequestLeaderboard(diff_id) => {
                 let scores = sqlx::query(
@@ -85,7 +85,7 @@ impl Client {
                         ORDER BY score DESC
                         ",
                 )
-                .bind(diff_id)
+                .bind(i32::try_from(diff_id).unwrap())
                 .map(|row: sqlx::postgres::PgRow| {
                     let username: String = row.try_get(0).unwrap();
                     let hit_count: i32 = row.try_get(1).unwrap();

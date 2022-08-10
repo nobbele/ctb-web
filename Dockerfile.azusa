@@ -1,0 +1,12 @@
+FROM rust:1.62-buster
+RUN apt-get update
+RUN apt-get install -y libasound2-dev libgl-dev libxi-dev
+
+WORKDIR /usr/src/ctb-web
+COPY . .
+
+RUN cargo install --path azusa
+
+EXPOSE 3012
+
+CMD ["azusa"]

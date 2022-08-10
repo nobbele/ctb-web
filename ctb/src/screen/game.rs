@@ -99,7 +99,6 @@ pub struct Game {
     last_ping: f64,
     sent_ping: bool,
 
-    // TODO https://github.com/tesselode/kira/issues/27
     hitsound_volume_handle: VolumeControlHandle,
     main_volume_handle: VolumeControlHandle,
 
@@ -339,7 +338,7 @@ impl Game {
             }
         }
 
-        if is_key_pressed(KeyCode::M) {
+        if self.data.is_key_pressed(KeyCode::F3) {
             if let Some(OverlayEnum::Mods(_)) = self.overlay {
                 log!(LogType::General, "Closing mods overlay");
                 self.overlay = None;
@@ -359,7 +358,7 @@ impl Game {
             }
         }
 
-        if is_key_pressed(KeyCode::V) {
+        if self.data.is_key_pressed(KeyCode::V) {
             self.data
                 .broadcast(GameMessage::change_screen(Visualizer::new()));
         }
