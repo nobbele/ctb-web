@@ -59,7 +59,7 @@ pub fn get_charts() -> Vec<ChartInfo> {
                 },
             ],
         },
-        ChartInfo {
+        /*ChartInfo {
             id: 2,
             title: "Padoru".to_string(),
             difficulties: vec![
@@ -116,7 +116,7 @@ pub fn get_charts() -> Vec<ChartInfo> {
                     name: "Overdose".to_string(),
                 },
             ],
-        },
+        },*/
     ]
 }
 

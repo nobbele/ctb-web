@@ -198,6 +198,7 @@ pub struct SelectScreen {
     scroll_target: Option<f32>,
 
     start: MenuButton,
+    pause: MenuButton,
     loading_promise: Option<Promise<(StaticSoundData, Texture2D)>>,
     started_map: Cell<bool>,
 }
@@ -288,7 +289,7 @@ impl SelectScreen {
                     400.,
                     100.,
                 ),
-                tx,
+                tx.clone(),
             ),
             loading_promise: None,
             local_lb: None,
@@ -296,6 +297,13 @@ impl SelectScreen {
             scroll_target: None,
             chart_data: None,
             started_map: Cell::new(false),
+            pause: MenuButton::new(
+                "pause".to_string(),
+                vec!["Pause".to_string()],
+                Popout::None,
+                Rect::new(screen_width() / 2. - 400. / 2., 0., 400., 100.),
+                tx.clone(),
+            ),
         }
     }
 
@@ -458,6 +466,7 @@ impl Screen for SelectScreen {
             if !self.started_map.get() {
                 self.chart_list.handle_message(&message);
                 self.start.handle_message(&message);
+                self.pause.handle_message(&message);
                 if let Some(leaderboard) = &mut self.local_lb {
                     leaderboard.handle_message(&message);
                 }
@@ -538,10 +547,23 @@ impl Screen for SelectScreen {
                         self.start_map(data.clone());
                     }
                 }
+
+                if message.target == self.pause.id {
+                    if let MessageData::MenuButton(MenuButtonMessage::Selected) = message.data {
+                        if data.state_mut().music.state()
+                            == kira::sound::static_sound::PlaybackState::Playing
+                        {
+                            data.broadcast(GameMessage::PauseMusic);
+                        } else {
+                            data.broadcast(GameMessage::ResumeMusic);
+                        }
+                    }
+                }
             }
         }
         self.chart_list.update(data.clone());
         self.start.update(data.clone());
+        self.pause.update(data.clone());
         if let Some(local) = &mut self.local_lb {
             local.update(data.clone());
         }
@@ -563,6 +585,7 @@ impl Screen for SelectScreen {
         );
         self.chart_list.draw(data.clone());
         self.start.draw(data.clone());
+        self.pause.draw(data.clone());
         if let Some(local) = &self.local_lb {
             local.draw(data.clone());
         }
