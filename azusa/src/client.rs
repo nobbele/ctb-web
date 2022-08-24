@@ -1,5 +1,5 @@
 use crate::app::{App, Target};
-use ctb::{
+use client::{
     azusa::{ClientPacket, ServerPacket},
     chat::{ChatMessage, ChatMessagePacket},
     rulesets::{

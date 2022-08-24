@@ -420,7 +420,7 @@ name = "azusa"
 version = "0.1.0"
 dependencies = [
  "bincode",
- "ctb",
+ "client",
  "dotenv",
  "flume",
  "futures",
@@ -670,6 +670,43 @@ dependencies = [
 ]
 
 [[package]]
+name = "client"
+version = "0.1.0"
+dependencies = [
+ "aether-log",
+ "async-trait",
+ "bincode",
+ "egui-macroquad",
+ "flume",
+ "gluesql",
+ "instant",
+ "js-sys",
+ "kira",
+ "macroquad",
+ "mint",
+ "noisy_float",
+ "num-format",
+ "osu-parser",
+ "osu-types",
+ "osu-utils",
+ "parking_lot 0.12.1",
+ "quad-net",
+ "qws",
+ "ringbuffer",
+ "rmp-serde",
+ "sapp-jsutils",
+ "serde",
+ "serde_json",
+ "slotmap",
+ "thiserror",
+ "time 0.3.9",
+ "ureq",
+ "uuid 1.1.2",
+ "wasm-bindgen",
+ "web-sys",
+]
+
+[[package]]
 name = "clipboard-win"
 version = "3.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -868,43 +905,6 @@ checksum = "57952ca27b5e3606ff4dd79b0020231aaf9d6aa76dc05fd30137538c50bd3ce8"
 dependencies = [
  "generic-array",
  "typenum",
-]
-
-[[package]]
-name = "ctb"
-version = "0.1.0"
-dependencies = [
- "aether-log",
- "async-trait",
- "bincode",
- "egui-macroquad",
- "flume",
- "gluesql",
- "instant",
- "js-sys",
- "kira",
- "macroquad",
- "mint",
- "noisy_float",
- "num-format",
- "osu-parser",
- "osu-types",
- "osu-utils",
- "parking_lot 0.12.1",
- "quad-net",
- "qws",
- "ringbuffer",
- "rmp-serde",
- "sapp-jsutils",
- "serde",
- "serde_json",
- "slotmap",
- "thiserror",
- "time 0.3.9",
- "ureq",
- "uuid 1.1.2",
- "wasm-bindgen",
- "web-sys",
 ]
 
 [[package]]

@@ -1,5 +1,5 @@
-use ctb::screen::game::Game;
-pub use ctb::*;
+use client::screen::game::Game;
+pub use client::*;
 use macroquad::prelude::*;
 
 #[macroquad::main(window_conf)]

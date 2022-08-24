@@ -1,5 +1,5 @@
 use crate::client::Client;
-use ctb::azusa::{ClientPacket, ServerPacket};
+use client::azusa::{ClientPacket, ServerPacket};
 use futures::{SinkExt, StreamExt};
 use sqlx::{postgres::PgPoolOptions, Pool, Postgres};
 use std::{collections::HashMap, env, ops::DerefMut, sync::Arc, time::Duration};
