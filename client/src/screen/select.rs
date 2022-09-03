@@ -301,7 +301,12 @@ impl SelectScreen {
                 "pause".to_string(),
                 vec!["Pause".to_string()],
                 Popout::None,
-                Rect::new(screen_width() / 2. - 400. / 2., 0., 400., 100.),
+                Rect::new(
+                    screen_width() / 2. - 400. / 2.,
+                    screen_height() / 2. - 100. / 2.,
+                    400.,
+                    100.,
+                ),
                 tx.clone(),
             ),
         }

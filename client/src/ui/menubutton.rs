@@ -1,10 +1,6 @@
 use super::{Message, MessageData, UiElement};
-use crate::{
-    draw_text_centered,
-    screen::{game::SharedGameData},
-};
+use crate::{draw_text_centered, screen::game::SharedGameData};
 use macroquad::prelude::*;
-
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Popout {
@@ -153,14 +149,12 @@ impl UiElement for MenuButton {
 
     fn handle_message(&mut self, message: &Message) {
         if message.target == self.id {
-            if let MessageData::MenuButton(MenuButtonMessage::Hovered) = message.data {
-                self.hovered = true;
-            } else if let MessageData::MenuButton(MenuButtonMessage::Unhovered) = message.data {
-                self.hovered = false;
-            } else if let MessageData::MenuButton(MenuButtonMessage::Selected) = message.data {
-                self.selected = true;
-            } else if let MessageData::MenuButton(MenuButtonMessage::Unselected) = message.data {
-                self.selected = false;
+            match message.data {
+                MessageData::MenuButton(MenuButtonMessage::Hovered) => self.hovered = true,
+                MessageData::MenuButton(MenuButtonMessage::Unhovered) => self.hovered = false,
+                MessageData::MenuButton(MenuButtonMessage::Selected) => self.selected = true,
+                MessageData::MenuButton(MenuButtonMessage::Unselected) => self.selected = false,
+                _ => (),
             }
         }
     }
