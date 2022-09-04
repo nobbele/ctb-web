@@ -34,9 +34,9 @@ impl SetupScreen {
                     400.,
                 ),
                 vec![
-                    (vec!["Left-handed (A D RShift)".into()], None),
-                    (vec!["Right-handed (Left Right LShift)".into()], None),
-                    (vec!["Custom (TODO)".into()], None),
+                    vec!["Left-handed (A D RShift)".into()],
+                    vec!["Right-handed (Left Right LShift)".into()],
+                    vec!["Custom (TODO)".into()],
                 ],
                 tx,
             ),

@@ -1,8 +1,11 @@
+use self::{
+    expandablelist::ExpandableListMessage, menubutton::MenuButtonMessage,
+    menubuttonlist::MenuButtonListMessage,
+};
 use crate::screen::game::SharedGameData;
-
-use self::{menubutton::MenuButtonMessage, menubuttonlist::MenuButtonListMessage};
 use macroquad::prelude::*;
 
+pub mod expandablelist;
 pub mod menubutton;
 pub mod menubuttonlist;
 
@@ -14,6 +17,7 @@ pub struct Message {
 pub enum MessageData {
     MenuButton(MenuButtonMessage),
     MenuButtonList(MenuButtonListMessage),
+    ExpandableList(ExpandableListMessage),
 }
 
 // Implementors assumed to call set_bounds in its new() method.

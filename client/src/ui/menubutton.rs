@@ -27,6 +27,9 @@ pub struct MenuButton {
     selected: bool,
     offset: f32,
     popout: Popout,
+
+    selectable: bool,
+    selected_frames_countdown: u8,
 }
 const SELECTED_COLOR: Color = Color::new(1.0, 1.0, 1.0, 1.0);
 const HOVERED_COLOR: Color = Color::new(0.5, 0.5, 0.8, 1.0);
@@ -39,6 +42,7 @@ impl MenuButton {
         popout: Popout,
         rect: Rect,
         tx: flume::Sender<Message>,
+        selectable: bool,
     ) -> Self {
         let mut button = MenuButton {
             id,
@@ -50,6 +54,8 @@ impl MenuButton {
             selected: false,
             offset: 0.,
             popout,
+            selectable,
+            selected_frames_countdown: 0,
         };
         button.set_bounds(rect);
         button
@@ -145,6 +151,14 @@ impl UiElement for MenuButton {
                 self.visible_rect.y = self.rect.y - y_offset / 2.;
             }
         }
+
+        if self.selected && !self.selectable {
+            if self.selected_frames_countdown > 0 {
+                self.selected_frames_countdown -= 1;
+            } else {
+                self.selected = false;
+            }
+        }
     }
 
     fn handle_message(&mut self, message: &Message) {
@@ -152,7 +166,10 @@ impl UiElement for MenuButton {
             match message.data {
                 MessageData::MenuButton(MenuButtonMessage::Hovered) => self.hovered = true,
                 MessageData::MenuButton(MenuButtonMessage::Unhovered) => self.hovered = false,
-                MessageData::MenuButton(MenuButtonMessage::Selected) => self.selected = true,
+                MessageData::MenuButton(MenuButtonMessage::Selected) => {
+                    self.selected = true;
+                    self.selected_frames_countdown = 7;
+                }
                 MessageData::MenuButton(MenuButtonMessage::Unselected) => self.selected = false,
                 _ => (),
             }

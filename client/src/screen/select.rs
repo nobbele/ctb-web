@@ -16,8 +16,9 @@ use crate::{
     promise::Promise,
     score,
     ui::{
+        expandablelist::{ExpandableList, ExpandableListMessage},
         menubutton::{MenuButton, MenuButtonMessage, Popout},
-        menubuttonlist::{MenuButtonList, MenuButtonListMessage},
+        menubuttonlist::MenuButtonList,
         Message, MessageData, UiElement,
     },
 };
@@ -192,7 +193,7 @@ pub struct SelectScreen {
 
     rx: flume::Receiver<Message>,
     tx: flume::Sender<Message>,
-    chart_list: MenuButtonList,
+    chart_list: ExpandableList,
     global_lb: Option<MenuButtonList>,
     local_lb: Option<MenuButtonList>,
     scroll_target: Option<f32>,
@@ -239,23 +240,21 @@ impl SelectScreen {
             .map(|chart| {
                 (
                     vec![chart.title.clone()],
-                    Some(
-                        chart
-                            .difficulties
-                            .iter()
-                            .map(|diff| {
-                                format!(
-                                    "{} [{:.2}*]",
-                                    diff.name,
-                                    diffs[&format!("{}-{}", chart.title, diff.name)].star_rating()
-                                )
-                            })
-                            .collect::<Vec<_>>(),
-                    ),
+                    chart
+                        .difficulties
+                        .iter()
+                        .map(|diff| {
+                            format!(
+                                "{} [{:.2}*]",
+                                diff.name,
+                                diffs[&format!("{}-{}", chart.title, diff.name)].star_rating()
+                            )
+                        })
+                        .collect::<Vec<_>>(),
                 )
             })
             .collect::<Vec<_>>();
-        let chart_list = MenuButtonList::new(
+        let chart_list = ExpandableList::new(
             "button_list".to_string(),
             Popout::Left,
             Rect::new(screen_width() - 400., 0., 400., 400.),
@@ -264,7 +263,7 @@ impl SelectScreen {
         );
         tx.send(Message {
             target: chart_list.id.clone(),
-            data: MessageData::MenuButtonList(MenuButtonListMessage::Click(0)),
+            data: MessageData::ExpandableList(ExpandableListMessage::Click(0)),
         })
         .unwrap();
 
@@ -290,6 +289,7 @@ impl SelectScreen {
                     100.,
                 ),
                 tx.clone(),
+                false,
             ),
             loading_promise: None,
             local_lb: None,
@@ -308,6 +308,7 @@ impl SelectScreen {
                     100.,
                 ),
                 tx.clone(),
+                false,
             ),
         }
     }
@@ -415,7 +416,7 @@ impl Screen for SelectScreen {
             self.tx
                 .send(Message {
                     target: self.chart_list.id.clone(),
-                    data: MessageData::MenuButtonList(MenuButtonListMessage::Click(
+                    data: MessageData::ExpandableList(ExpandableListMessage::Click(
                         (self.chart_list.selected + 1) % self.chart_list.buttons.len(),
                     )),
                 })
@@ -424,7 +425,7 @@ impl Screen for SelectScreen {
             self.tx
                 .send(Message {
                     target: self.chart_list.id.clone(),
-                    data: MessageData::MenuButtonList(MenuButtonListMessage::Click(
+                    data: MessageData::ExpandableList(ExpandableListMessage::Click(
                         (self.chart_list.selected + self.chart_list.buttons.len() - 1)
                             % self.chart_list.buttons.len(),
                     )),
@@ -436,27 +437,19 @@ impl Screen for SelectScreen {
             self.tx
                 .send(Message {
                     target: self.chart_list.id.clone(),
-                    data: MessageData::MenuButtonList(MenuButtonListMessage::ClickSub(
+                    data: MessageData::ExpandableList(ExpandableListMessage::ClickSub(
                         (self.chart_list.sub_selected + 1)
-                            % self.chart_list.buttons[self.chart_list.selected]
-                                .1
-                                .as_ref()
-                                .unwrap()
-                                .len(),
+                            % self.chart_list.buttons[self.chart_list.selected].1.len(),
                     )),
                 })
                 .unwrap();
         }
         if data.is_key_pressed(KeyCode::Up) {
-            let len = self.chart_list.buttons[self.chart_list.selected]
-                .1
-                .as_ref()
-                .unwrap()
-                .len();
+            let len = self.chart_list.buttons[self.chart_list.selected].1.len();
             self.tx
                 .send(Message {
                     target: self.chart_list.id.clone(),
-                    data: MessageData::MenuButtonList(MenuButtonListMessage::ClickSub(
+                    data: MessageData::ExpandableList(ExpandableListMessage::ClickSub(
                         (self.chart_list.sub_selected + len - 1) % len,
                     )),
                 })
@@ -480,14 +473,14 @@ impl Screen for SelectScreen {
                 }
 
                 if message.target == self.chart_list.id {
-                    if let MessageData::MenuButtonList(MenuButtonListMessage::Selected(idx)) =
+                    if let MessageData::ExpandableList(ExpandableListMessage::Selected(idx)) =
                         message.data
                     {
                         self.selected_chart = idx;
                         let chart = &self.charts[self.selected_chart];
                         data.state.borrow_mut().chart = chart.clone();
                     }
-                    if let MessageData::MenuButtonList(MenuButtonListMessage::SelectedSub(idx)) =
+                    if let MessageData::ExpandableList(ExpandableListMessage::SelectedSub(idx)) =
                         message.data
                     {
                         self.selected_difficulty = idx;
@@ -498,14 +491,11 @@ impl Screen for SelectScreen {
                         let button_title = entries
                             .iter()
                             .map(|entry| {
-                                (
-                                    vec![format!(
-                                        "{} ({:.2}%)",
-                                        entry.score.to_formatted_string(&Locale::en),
-                                        entry.accuracy * 100.
-                                    )],
-                                    None,
-                                )
+                                vec![format!(
+                                    "{} ({:.2}%)",
+                                    entry.score.to_formatted_string(&Locale::en),
+                                    entry.accuracy * 100.
+                                )]
                             })
                             .collect::<Vec<_>>();
                         self.local_lb = Some(MenuButtonList::new(
@@ -516,10 +506,8 @@ impl Screen for SelectScreen {
                             self.tx.clone(),
                         ));
 
-                        let sub_button = &self.chart_list.buttons[self.chart_list.selected]
-                            .1
-                            .as_ref()
-                            .unwrap()[self.chart_list.sub_selected];
+                        let sub_button = &self.chart_list.buttons[self.chart_list.selected].1
+                            [self.chart_list.sub_selected];
                         self.scroll_target = Some(
                             sub_button.bounds().y + sub_button.bounds().h / 2.
                                 - self.chart_list.bounds().y,
@@ -694,17 +682,14 @@ impl Screen for SelectScreen {
                     let button_title = scores
                         .iter()
                         .map(|score| {
-                            (
-                                vec![
-                                    score.username.clone().unwrap(),
-                                    format!(
-                                        "{} ({:.2}%)",
-                                        score.score.to_formatted_string(&Locale::en),
-                                        score::accuracy(&score.judgements) * 100.
-                                    ),
-                                ],
-                                None,
-                            )
+                            vec![
+                                score.username.clone().unwrap(),
+                                format!(
+                                    "{} ({:.2}%)",
+                                    score.score.to_formatted_string(&Locale::en),
+                                    score::accuracy(&score.judgements) * 100.
+                                ),
+                            ]
                         })
                         .collect::<Vec<_>>();
                     self.global_lb = Some(MenuButtonList::new(

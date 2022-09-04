@@ -1,3 +1,7 @@
+use self::{
+    game::{GameMessage, SharedGameData},
+    gameplay::Mod,
+};
 use crate::{
     azusa::{ClientPacket, ServerPacket},
     cache::Cache,
@@ -14,11 +18,6 @@ use kira::{
 };
 use macroquad::prelude::*;
 use std::cell::{Cell, Ref, RefCell, RefMut};
-
-use self::{
-    game::{GameMessage, SharedGameData},
-    gameplay::Mod,
-};
 
 pub mod game;
 pub mod gameplay;
