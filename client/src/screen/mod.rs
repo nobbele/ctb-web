@@ -11,6 +11,7 @@ use crate::{
     promise::PromiseExecutor,
 };
 use async_trait::async_trait;
+use gluesql::{prelude::Glue, sled_storage::SledStorage};
 use kira::{
     manager::AudioManager,
     sound::static_sound::{StaticSoundData, StaticSoundHandle},
@@ -186,6 +187,8 @@ pub struct GameData {
 
     mods: RefCell<Vec<Mod>>,
     rate: Cell<f32>,
+
+    cache_db: RefCell<Glue<gluesql::sled_storage::sled::IVec, SledStorage>>,
 }
 
 impl GameData {

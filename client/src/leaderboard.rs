@@ -22,7 +22,7 @@ pub struct Leaderboard {
 #[cfg(not(target_family = "wasm"))]
 impl Leaderboard {
     pub async fn new() -> Self {
-        let storage = SledStorage::new("data/.storage").unwrap();
+        let storage = SledStorage::new("data/.scores").unwrap();
         let mut glue = Glue::new(storage);
 
         glue.execute_async(include_str!("queries/initialize.sql"))

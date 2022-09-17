@@ -15,6 +15,7 @@ use crate::{
     LogType,
 };
 use aether::log;
+use gluesql::{prelude::Glue, sled_storage::SledStorage};
 use kira::{
     manager::{AudioManager, AudioManagerSettings},
     sound::static_sound::{PlaybackState, StaticSoundData},
@@ -116,7 +117,7 @@ impl Game {
                 .build()
         } else {
             aether::init()
-                .base_path("data")
+                .base_path("data/logs")
                 .setup(LogType::General, |ep| ep.path("general.log"))
                 .setup(LogType::Network, |ep| ep)
                 .setup(LogType::AudioPerformance, |ep| {
@@ -191,6 +192,12 @@ impl Game {
             .await
             .unwrap();
 
+        let mut cache_db = Glue::new(SledStorage::new("data/.cache").unwrap());
+        cache_db
+            .execute_async(include_str!("../queries/initialize_cache.sql"))
+            .await
+            .unwrap();
+
         let data = Rc::new(GameData {
             audio_cache,
             image_cache,
@@ -234,6 +241,7 @@ impl Game {
             max_stack: Cell::new(max_stack),
             mods: RefCell::new(Vec::new()),
             rate: Cell::new(1.0),
+            cache_db: RefCell::new(cache_db),
         });
 
         let azusa = if let Some(token) = token {
