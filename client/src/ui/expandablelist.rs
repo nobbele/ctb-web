@@ -26,7 +26,6 @@ impl ExpandableList {
         id: String,
         popout: Popout,
         rect: Rect,
-        // This API is an abomination.
         titles: Vec<(Vec<String>, Vec<String>)>,
         tx: flume::Sender<Message>,
     ) -> Self {
