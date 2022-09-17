@@ -11,6 +11,8 @@ use std::{
     task::{Context, Poll},
 };
 
+use gluesql::{prelude::Glue, sled_storage::SledStorage};
+
 pub mod azusa;
 pub mod cache;
 pub mod chart;
@@ -26,6 +28,8 @@ pub mod score;
 pub mod screen;
 pub mod ui;
 pub mod web_socket;
+
+pub type Database = Glue<gluesql::sled_storage::sled::IVec, SledStorage>;
 
 #[derive(Debug, Hash, PartialEq, Eq)]
 pub enum LogType {

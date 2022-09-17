@@ -3,7 +3,6 @@ pub use client::*;
 use macroquad::prelude::*;
 
 //  !!  Online Map Selection
-// TODO Optimize menu button list (can we query map data from a local database rather than in-memory vecs?)
 // TODO and split added maps menu and online listing
 // TODO and implement map listings in the API (with basic info used for previewing SR, title, diffs, etc)
 // TODO and load beatmaps partially and stream the previews from web (loading and non-blocking)

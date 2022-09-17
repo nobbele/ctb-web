@@ -11,7 +11,10 @@ use crate::{
     promise::PromiseExecutor,
 };
 use async_trait::async_trait;
-use gluesql::{prelude::Glue, sled_storage::SledStorage};
+use gluesql::{
+    prelude::{Glue, Payload},
+    sled_storage::SledStorage,
+};
 use kira::{
     manager::AudioManager,
     sound::static_sound::{StaticSoundData, StaticSoundHandle},
@@ -43,81 +46,42 @@ pub struct ChartInfo {
     pub difficulties: Vec<DifficultyInfo>,
 }
 
-pub fn get_charts() -> Vec<ChartInfo> {
-    vec![
-        ChartInfo {
-            id: 1,
-            title: "Kizuato".to_string(),
-            difficulties: vec![
-                DifficultyInfo {
-                    id: 1,
-                    name: "Platter".to_string(),
-                },
-                DifficultyInfo {
-                    id: 2,
-                    name: "Ascendance's Rain".to_string(),
-                },
-            ],
-        },
-        /*ChartInfo {
-            id: 2,
-            title: "Padoru".to_string(),
-            difficulties: vec![
-                DifficultyInfo {
-                    id: 3,
-                    name: "Salad".to_string(),
-                },
-                DifficultyInfo {
-                    id: 4,
-                    name: "Platter".to_string(),
-                },
-            ],
-        },
-        ChartInfo {
-            id: 3,
-            title: "Troublemaker".to_string(),
-            difficulties: vec![
-                DifficultyInfo {
-                    id: 5,
-                    name: "Cup".to_string(),
-                },
-                DifficultyInfo {
-                    id: 6,
-                    name: "tocean's Salad".to_string(),
-                },
-                DifficultyInfo {
-                    id: 8,
-                    name: "MBomb's Light Rain".to_string(),
-                },
-                DifficultyInfo {
-                    id: 9,
-                    name: "Equim's Rain".to_string(),
-                },
-                DifficultyInfo {
-                    id: 10,
-                    name: "Kagari's Himedose".to_string(),
-                },
-            ],
-        },
-        ChartInfo {
-            id: 4,
-            title: "Dear You".to_string(),
-            difficulties: vec![
-                DifficultyInfo {
-                    id: 11,
-                    name: "SYAHME's Salad".to_string(),
-                },
-                DifficultyInfo {
-                    id: 12,
-                    name: "Murumuru's Platter".to_string(),
-                },
-                DifficultyInfo {
-                    id: 13,
-                    name: "Overdose".to_string(),
-                },
-            ],
-        },*/
-    ]
+pub fn get_charts(data: SharedGameData) -> Vec<ChartInfo> {
+    let mut cache_db = data.chart_db.borrow_mut();
+    match cache_db.execute("SELECT id, title FROM charts").unwrap() {
+        Payload::Select { labels: _, rows } => rows
+            .into_iter()
+            .map(|columns| {
+                let id: i64 = columns[0].clone().try_into().unwrap();
+                let title = columns[1].clone().try_into().unwrap();
+
+                let difficulties = match cache_db
+                    .execute(format!(
+                        "SELECT id, title FROM difficulties WHERE chart_id = {}",
+                        id
+                    ))
+                    .unwrap()
+                {
+                    Payload::Select { labels: _, rows } => rows
+                        .into_iter()
+                        .map(|columns| {
+                            let id: i64 = columns[0].clone().try_into().unwrap();
+                            let name = columns[1].clone().try_into().unwrap();
+                            DifficultyInfo { id: id as _, name }
+                        })
+                        .collect(),
+                    _ => unreachable!(),
+                };
+
+                ChartInfo {
+                    id: id as _,
+                    title,
+                    difficulties,
+                }
+            })
+            .collect(),
+        _ => unreachable!(),
+    }
 }
 
 #[async_trait(?Send)]
@@ -188,7 +152,7 @@ pub struct GameData {
     mods: RefCell<Vec<Mod>>,
     rate: Cell<f32>,
 
-    cache_db: RefCell<Glue<gluesql::sled_storage::sled::IVec, SledStorage>>,
+    pub chart_db: RefCell<Glue<gluesql::sled_storage::sled::IVec, SledStorage>>,
 }
 
 impl GameData {

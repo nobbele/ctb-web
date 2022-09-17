@@ -2,7 +2,7 @@ use super::{
     menubutton::{MenuButton, MenuButtonMessage, Popout},
     Message, MessageData, UiElement,
 };
-use crate::screen::game::SharedGameData;
+use crate::screen::{game::SharedGameData, get_charts, ChartInfo, DifficultyInfo};
 use macroquad::prelude::*;
 
 pub enum ExpandableListMessage {
@@ -23,44 +23,53 @@ pub struct ExpandableList {
 
 impl ExpandableList {
     pub fn new(
+        data: SharedGameData,
         id: String,
         popout: Popout,
         rect: Rect,
-        titles: Vec<(Vec<String>, Vec<String>)>,
         tx: flume::Sender<Message>,
     ) -> Self {
         let mut list = ExpandableList {
             id: id.clone(),
-            buttons: titles
+            buttons: get_charts(data)
                 .into_iter()
                 .enumerate()
-                .map(|(idx, (title, diffs))| {
-                    let id = format!("{}-{}", &id, idx);
-                    (
-                        MenuButton::new(
-                            id.clone(),
+                .map(
+                    |(
+                        idx,
+                        ChartInfo {
                             title,
-                            popout,
-                            Rect::default(),
-                            tx.clone(),
-                            true,
-                        ),
-                        diffs
-                            .into_iter()
-                            .enumerate()
-                            .map(|(idx, diff)| {
-                                MenuButton::new(
-                                    format!("{}-{}", id, idx),
-                                    vec![diff],
-                                    popout,
-                                    Rect::default(),
-                                    tx.clone(),
-                                    true,
-                                )
-                            })
-                            .collect(),
-                    )
-                })
+                            difficulties,
+                            ..
+                        },
+                    )| {
+                        let id = format!("{}-{}", &id, idx);
+                        (
+                            MenuButton::new(
+                                id.clone(),
+                                vec![title],
+                                popout,
+                                Rect::default(),
+                                tx.clone(),
+                                true,
+                            ),
+                            difficulties
+                                .into_iter()
+                                .enumerate()
+                                .map(|(idx, DifficultyInfo { name, .. })| {
+                                    MenuButton::new(
+                                        format!("{}-{}", id, idx),
+                                        vec![name],
+                                        popout,
+                                        Rect::default(),
+                                        tx.clone(),
+                                        true,
+                                    )
+                                })
+                                .collect(),
+                        )
+                    },
+                )
                 .collect(),
             selected: 0,
             sub_selected: 0,

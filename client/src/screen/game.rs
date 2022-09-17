@@ -192,11 +192,16 @@ impl Game {
             .await
             .unwrap();
 
-        let mut cache_db = Glue::new(SledStorage::new("data/.cache").unwrap());
-        cache_db
-            .execute_async(include_str!("../queries/initialize_cache.sql"))
-            .await
-            .unwrap();
+        let fresh_cache = !std::path::PathBuf::from("data/.chart").exists();
+        let mut chart_db = Glue::new(SledStorage::new("data/.chart").unwrap());
+        if fresh_cache {
+            for stmt in include_str!("../queries/initialize_chart.sql")
+                .split(';')
+                .filter(|s| !s.is_empty())
+            {
+                chart_db.execute_async(stmt).await.unwrap();
+            }
+        }
 
         let data = Rc::new(GameData {
             audio_cache,
@@ -241,7 +246,7 @@ impl Game {
             max_stack: Cell::new(max_stack),
             mods: RefCell::new(Vec::new()),
             rate: Cell::new(1.0),
-            cache_db: RefCell::new(cache_db),
+            chart_db: RefCell::new(chart_db),
         });
 
         let azusa = if let Some(token) = token {

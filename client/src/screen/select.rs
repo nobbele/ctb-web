@@ -205,11 +205,10 @@ pub struct SelectScreen {
 }
 
 impl SelectScreen {
-    pub async fn new(_data: SharedGameData) -> Self {
+    pub async fn new(data: SharedGameData) -> Self {
         let (tx, rx) = flume::unbounded();
-        let charts = get_charts();
+        let charts = get_charts(data.clone());
 
-        // TODO Cache this?
         let diff_futures = charts.iter().flat_map(|chart| {
             chart.difficulties.iter().map(|diff| async {
                 let beatmap_data =
@@ -235,30 +234,11 @@ impl SelectScreen {
             diffs.insert(key, value);
         }
 
-        let charts_raw = charts
-            .iter()
-            .map(|chart| {
-                (
-                    vec![chart.title.clone()],
-                    chart
-                        .difficulties
-                        .iter()
-                        .map(|diff| {
-                            format!(
-                                "{} [{:.2}*]",
-                                diff.name,
-                                diffs[&format!("{}-{}", chart.title, diff.name)].star_rating()
-                            )
-                        })
-                        .collect::<Vec<_>>(),
-                )
-            })
-            .collect::<Vec<_>>();
         let chart_list = ExpandableList::new(
+            data,
             "button_list".to_string(),
             Popout::Left,
             Rect::new(screen_width() - 400., 0., 400., 400.),
-            charts_raw,
             tx.clone(),
         );
         tx.send(Message {
